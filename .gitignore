@@ -4,3 +4,24 @@ local.properties
 *.iml
 .idea/
 app/build/
+
+# IDE metadata
+.vscode/
+.project
+.settings/
+app/.classpath
+app/.project
+app/.settings/
+
+# Spec Kit / generated assistant workflow files
+.specify/
+.github/
+
+# Android generated files
+captures/
+*.apk
+*.aab
+*.ap_
+
+# OS files
+.DS_Store
