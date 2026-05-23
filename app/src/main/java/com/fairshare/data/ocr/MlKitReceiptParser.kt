@@ -158,18 +158,32 @@ class MlKitReceiptParser @Inject constructor(
         }
 
         /**
-         * Some receipts (restaurants in particular) print two aligned price columns:
-         * "EUR/U" (unit price) and "EUR" (line total). When qty=1 they are identical
-         * but their cy is slightly offset, which breaks the row clustering: the
-         * right-most price ends up anchoring a new row that swallows the *next*
-         * item's leftmost tokens.
+         * Some receipts print two aligned price columns. We've observed two
+         * very different shapes in the wild:
          *
-         * Heuristic: cluster clean price tokens by cx, and if we detect ≥ 2 distinct
-         * columns separated by a wide horizontal gap, keep only the column whose
-         * cy values are best aligned with the rest of the page (i.e. the one whose
-         * baseline is closest to the label rows). In practice that's the *left*
-         * price column on French restaurant tickets ("EUR/U" — unit price — sits
-         * closer to the label baseline than the "EUR" total column further right).
+         *  - **Symmetric** (bug-01, "La Perrozienne"): both `EUR/U` (unit price)
+         *    and `EUR` (line total) print on *every* item line. Two full columns
+         *    of equal length. The right column's cy is slightly mis-aligned with
+         *    the labels (~60 px diff vs ~40 px for the left), which used to
+         *    bridge consecutive rows. We must drop one of the two columns —
+         *    the left one is the safe choice (better label alignment, and
+         *    [ExpandReceiptQuantitiesUseCase] re-multiplies later).
+         *
+         *  - **Asymmetric** (bug-02, "Crêperie de la Poste"): the unit-price
+         *    column only prints for lines with qty > 1, so it is sparse (2–3
+         *    prices). The right column carries every line total. Here we MUST
+         *    keep the right (bigger) column, otherwise we lose every qty=1
+         *    item — which is what happened with the previous "always drop the
+         *    right column" rule.
+         *
+         * Heuristic:
+         *  1. Cluster clean price tokens by cx using a "wide gap" splitter
+         *     (gap ≥ 2 × median token height starts a new cluster).
+         *  2. If clusters are roughly the same size (ratio ≥ 0.5) → treat as
+         *     symmetric duplicate columns and keep the LEFT-most one.
+         *  3. Otherwise → treat smaller clusters as auxiliary noise (sparse
+         *     unit prices, lone footer prices like "PAR COUVERT 19,75", …)
+         *     and keep only the BIGGEST cluster.
          */
         internal fun dropDuplicatePriceColumns(tokens: List<Token>): List<Token> {
             val priceTokens = tokens.filter { PRICE_REGEX.matches(it.text.trim()) }
@@ -177,20 +191,49 @@ class MlKitReceiptParser @Inject constructor(
             val sortedByCx = priceTokens.sortedBy { it.cx }
             val medianHeight = tokens.map { it.height }.sorted()[tokens.size / 2]
             val threshold = medianHeight * 2
-            // We want to detect a duplicate price column on the *right* side of the
-            // receipt. Find the right-most gap wider than the threshold: tokens to
-            // its right form the duplicate column we want to drop. Using the
-            // right-most qualifying gap (rather than the absolute biggest one)
-            // avoids being fooled by isolated stray prices on the left (e.g. the
-            // "PAR COUVERT : 19,75" footer line).
-            var splitIdx = -1
+
+            // 1. Partition prices into cx-clusters separated by wide gaps.
+            val clusters = mutableListOf<MutableList<Token>>()
+            clusters += mutableListOf(sortedByCx.first())
             for (i in 1 until sortedByCx.size) {
-                val g = sortedByCx[i].cx - sortedByCx[i - 1].cx
-                if (g >= threshold) splitIdx = i
+                val gap = sortedByCx[i].cx - sortedByCx[i - 1].cx
+                if (gap >= threshold) clusters += mutableListOf(sortedByCx[i])
+                else clusters.last() += sortedByCx[i]
             }
-            if (splitIdx < 0) return tokens
-            val rightColumn = sortedByCx.subList(splitIdx, sortedByCx.size).toSet()
-            return tokens.filterNot { it in rightColumn }
+            if (clusters.size < 2) return tokens
+
+            // 2. Drop "outlier" clusters — single stray prices like the
+            //    "PAR COUVERT : 19,75" footer that sit in their own column.
+            //    A cluster is an outlier if it has < 25 % the count of the
+            //    biggest cluster (and at most 2 prices). This keeps real
+            //    columns intact while removing isolated noise that would
+            //    otherwise warp the symmetric/asymmetric decision below.
+            val biggestRaw = clusters.maxOf { it.size }
+            val outlierCutoff = (biggestRaw * 0.25).coerceAtLeast(1.0)
+            val outlierTokens: Set<Token> = clusters
+                .filter { it.size <= 2 && it.size < outlierCutoff }
+                .flatten()
+                .toSet()
+            val significant = clusters.filter { c -> c.none { it in outlierTokens } }
+            if (significant.size < 2) {
+                return tokens.filterNot { it in outlierTokens }
+            }
+
+            // 3. Decide which of the remaining clusters to keep.
+            val biggest = significant.maxOf { it.size }
+            val smallest = significant.minOf { it.size }
+            val symmetric = smallest * 2 >= biggest
+            val kept: List<Token> = if (symmetric) {
+                significant.first()                       // left-most
+            } else {
+                significant.first { it.size == biggest }  // biggest (left-most on tie)
+            }
+
+            val dropped: Set<Token> = significant
+                .filter { it !== kept }
+                .flatten()
+                .toSet() + outlierTokens
+            return tokens.filterNot { it in dropped }
         }
 
         /**
@@ -240,6 +283,10 @@ class MlKitReceiptParser @Inject constructor(
             val finalLabel = cleanLabel
                 .trim()
                 .trim('.', '-', ':', ' ', '\t', '*')
+                // Strip a trailing single-letter tax code ("… 9.30 D", "… 14.00 C")
+                // that French restaurants append after the price.
+                .replace(Regex("""\s+[A-Z]$"""), "")
+                .trim()
 
             if (finalLabel.length < 2) return emptyList()
             if (NOISE_PATTERNS.any { it.containsMatchIn(finalLabel) }) return emptyList()
@@ -258,6 +305,9 @@ class MlKitReceiptParser @Inject constructor(
         private val QTY_LEADING = Regex("""^\s*(\d{1,2})\s*[xX*]\s+(.+)$""")
         private val QTY_TRAILING = Regex("""^(.+?)\s+[xX*]\s*(\d{1,2})\s*$""")
         private val QTY_STUCK = Regex("""^(\d{1,2})[xX*]\s*(.+)$""")
+        /** Fallback: "N LABEL" with no `x` separator (some OCR runs drop the `x`).
+         *  Requires the label to start with a letter so we don't eat "1664 BIERE". */
+        private val QTY_BARE = Regex("""^(\d{1,2})\s+([A-Za-zÀ-ÿ].{1,}.*)$""")
 
         /** Returns (quantity, cleanLabel). quantity defaults to 1 if no marker is found. */
         internal fun extractQuantityAndLabel(label: String): Pair<Int, String> {
@@ -272,6 +322,10 @@ class MlKitReceiptParser @Inject constructor(
             QTY_TRAILING.matchEntire(label)?.let { m ->
                 val q = m.groupValues[2].toIntOrNull() ?: 1
                 return (q.takeIf { it in 1..50 } ?: 1) to m.groupValues[1]
+            }
+            QTY_BARE.matchEntire(label)?.let { m ->
+                val q = m.groupValues[1].toIntOrNull() ?: 1
+                return (q.takeIf { it in 1..50 } ?: 1) to m.groupValues[2]
             }
             return 1 to label
         }

@@ -150,4 +150,78 @@ class MlKitReceiptParserFixtureTest {
             labelWithPrice,
         )
     }
+
+    /**
+     * Bug 02 — "Crêperie de la Poste". This ticket also has two price columns
+     * (unit + total) BUT the unit column is sparse: it only prints when qty > 1
+     * (2× CRE MARRON 5,50 and 4× CHOCOLAT 3,50). With the previous "always drop
+     * the right column" rule we kept the 2-price column and lost 7 items out of
+     * 8 (total parsed: 9 € instead of 56,30 €).
+     *
+     * The fix is the asymmetric-cluster heuristic in [dropDuplicatePriceColumns]:
+     * when one cluster has < 50 % the size of the biggest, drop the small one
+     * and keep the well-populated total column.
+     *
+     * Notes on this fixture:
+     *  - OCR misread "2.10" as "2.40" for CAFE ALLONGE, so the parsed total is
+     *    56,60 € (not 56,30 €). User can fix in the UI; not the parser's job.
+     *  - OCR dropped the "x" between "1" and "FLAMB MARRON RHUM" for that one
+     *    line, hence the QTY_BARE fallback regex.
+     */
+    @Test
+    fun `bug-02 creperie — asymmetric price columns keep the populated one`() {
+        val tokens = loadFixture("bug-02-creperie.log")
+        val items = extractItems(tokens)
+
+        // Sanity: we should now detect ~8 item lines.
+        assertTrue(
+            "Expected ≥ 7 items, got ${items.size}: ${items.map { "${it.label}=${it.priceCents}×${it.quantity}" }}",
+            items.size >= 7,
+        )
+
+        // Sum of all detected item prices (price × qty since these are line totals).
+        // 11.00 + 9.30 + 3.70 + 6.90 + 5.80 + 14.00 + 3.50 + 2.40(=ocr-misread of 2.10) = 56.60
+        val total = items.sumOf { it.priceCents }
+        assertEquals(
+            "Sum of item line-totals should be 56,60 € (OCR misread 2.10 as 2.40)",
+            5660L,
+            total,
+        )
+
+        // Specific expectations on the two qty>1 lines.
+        val cre = items.firstOrNull { it.label.contains("CRE MARRON", ignoreCase = true) }
+        assertNotNull("Missing '2x CRE MARRON' line", cre)
+        assertEquals(2, cre!!.quantity)
+        assertEquals(1100L, cre.priceCents)
+
+        val choc = items.firstOrNull { it.label.startsWith("CHOCOLAT", ignoreCase = true) }
+        assertNotNull("Missing '4x CHOCOLAT' line", choc)
+        assertEquals(4, choc!!.quantity)
+        assertEquals(1400L, choc.priceCents)
+
+        // The "1 FLAMB MARRON RHUM" line (OCR lost the 'x') should still be
+        // detected as qty=1 with a clean label.
+        val flamb = items.firstOrNull { it.label.contains("FLAMB", ignoreCase = true) }
+        assertNotNull("Missing 'FLAMB MARRON RHUM' line", flamb)
+        assertEquals(1, flamb!!.quantity)
+        assertEquals(930L, flamb.priceCents)
+        assertTrue(
+            "FLAMB label should not start with a stray '1': '${flamb.label}'",
+            !flamb.label.trimStart().startsWith("1"),
+        )
+
+        // No label should retain the trailing tax-code letter ("… D" or "… C").
+        val withTaxCode = items.firstOrNull {
+            Regex("""\s[A-Z]$""").containsMatchIn(it.label)
+        }
+        assertEquals(
+            "Label should not keep the trailing tax-code letter: '${withTaxCode?.label}'",
+            null,
+            withTaxCode,
+        )
+
+        // The TOTAL row (56,30) must not appear as an item.
+        val totalLeaked = items.firstOrNull { it.priceCents == 5630L }
+        assertEquals("TOTAL line leaked as an item: ${totalLeaked?.label}", null, totalLeaked)
+    }
 }
