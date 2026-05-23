@@ -75,11 +75,11 @@ class MlKitReceiptParser @Inject constructor(
      */
     private fun dumpTokensForDebug(tokens: List<Token>) {
         if (!com.fairshare.BuildConfig.DEBUG) return
-        Log.v(TAG, "=== BEGIN receipt dump (${tokens.size} tokens) ===")
+        Log.i(TAG, "=== BEGIN receipt dump (${tokens.size} tokens) ===")
         tokens.forEach { t ->
-            Log.v(TAG, "${t.text.replace('\n', ' ')}|${t.cx}|${t.cy}|${t.height}")
+            Log.i(TAG, "${t.text.replace('\n', ' ')}|${t.cx}|${t.cy}|${t.height}")
         }
-        Log.v(TAG, "=== END receipt dump ===")
+        Log.i(TAG, "=== END receipt dump ===")
     }
 
     companion object {
@@ -117,6 +117,8 @@ class MlKitReceiptParser @Inject constructor(
             Regex("""(?i)paiement"""),
             Regex("""(?i)remise|discount"""),
             Regex("""(?i)pourboire|tip|service"""),
+            Regex("""(?i)^par\s+couvert"""),
+            Regex("""(?i)^couvert\b"""),
             // Misc receipt metadata
             Regex("""(?i)^tel|t(é|e)l(\.|:)"""),
             Regex("""(?i)siret|tva\s*intra"""),
@@ -129,22 +131,88 @@ class MlKitReceiptParser @Inject constructor(
         fun extractItems(tokens: List<Token>): List<ReceiptItem> {
             if (tokens.isEmpty()) return emptyList()
 
-            val medianHeight = tokens.map { it.height }.sorted()[tokens.size / 2].coerceAtLeast(1)
+            val cleaned = dropDuplicatePriceColumns(splitStuckPriceTokens(tokens))
+
+            val medianHeight = cleaned.map { it.height }.sorted()[cleaned.size / 2].coerceAtLeast(1)
             val rowTolerance = (medianHeight * 0.6).toInt().coerceAtLeast(6)
 
-            // Group tokens by row using Y proximity.
-            val sortedByY = tokens.sortedBy { it.cy }
+            // Group tokens by row using Y proximity from the row *anchor* (first token's
+            // cy), not from the previously appended token. Single-link (last-token)
+            // clustering breaks down on receipts whose right-most price column is
+            // slightly mis-aligned: every right-col price bridges its left-col
+            // neighbour to the next row, collapsing several lines into one.
+            val sortedByY = cleaned.sortedBy { it.cy }
             val rows = mutableListOf<MutableList<Token>>()
+            val anchors = mutableListOf<Int>()
             for (t in sortedByY) {
-                val last = rows.lastOrNull()
-                if (last != null && abs(t.cy - last.last().cy) <= rowTolerance) {
-                    last += t
+                val lastIdx = rows.lastIndex
+                if (lastIdx >= 0 && abs(t.cy - anchors[lastIdx]) <= rowTolerance) {
+                    rows[lastIdx] += t
                 } else {
                     rows += mutableListOf(t)
+                    anchors += t.cy
                 }
             }
 
             return rows.flatMap { row -> rowToItems(row) }
+        }
+
+        /**
+         * Some receipts (restaurants in particular) print two aligned price columns:
+         * "EUR/U" (unit price) and "EUR" (line total). When qty=1 they are identical
+         * but their cy is slightly offset, which breaks the row clustering: the
+         * right-most price ends up anchoring a new row that swallows the *next*
+         * item's leftmost tokens.
+         *
+         * Heuristic: cluster clean price tokens by cx, and if we detect ≥ 2 distinct
+         * columns separated by a wide horizontal gap, keep only the column whose
+         * cy values are best aligned with the rest of the page (i.e. the one whose
+         * baseline is closest to the label rows). In practice that's the *left*
+         * price column on French restaurant tickets ("EUR/U" — unit price — sits
+         * closer to the label baseline than the "EUR" total column further right).
+         */
+        internal fun dropDuplicatePriceColumns(tokens: List<Token>): List<Token> {
+            val priceTokens = tokens.filter { PRICE_REGEX.matches(it.text.trim()) }
+            if (priceTokens.size < 4) return tokens
+            val sortedByCx = priceTokens.sortedBy { it.cx }
+            val medianHeight = tokens.map { it.height }.sorted()[tokens.size / 2]
+            val threshold = medianHeight * 2
+            // We want to detect a duplicate price column on the *right* side of the
+            // receipt. Find the right-most gap wider than the threshold: tokens to
+            // its right form the duplicate column we want to drop. Using the
+            // right-most qualifying gap (rather than the absolute biggest one)
+            // avoids being fooled by isolated stray prices on the left (e.g. the
+            // "PAR COUVERT : 19,75" footer line).
+            var splitIdx = -1
+            for (i in 1 until sortedByCx.size) {
+                val g = sortedByCx[i].cx - sortedByCx[i - 1].cx
+                if (g >= threshold) splitIdx = i
+            }
+            if (splitIdx < 0) return tokens
+            val rightColumn = sortedByCx.subList(splitIdx, sortedByCx.size).toSet()
+            return tokens.filterNot { it in rightColumn }
+        }
+
+        /**
+         * Splits tokens where OCR concatenated a label and a price without space
+         * (e.g. "BRUT7,50" → ["BRUT", "7,50"]). The synthetic price token reuses
+         * the source token's cy/height; cx is shifted to the right so cx ordering
+         * stays correct.
+         */
+        internal fun splitStuckPriceTokens(tokens: List<Token>): List<Token> {
+            val stuck = Regex("""^(.+?)(-?\d{1,4}[.,]\d{2})$""")
+            val out = mutableListOf<Token>()
+            for (t in tokens) {
+                val m = stuck.matchEntire(t.text)
+                val label = m?.groupValues?.get(1)
+                if (m == null || label.isNullOrBlank() || label.last().isDigit()) {
+                    out += t
+                } else {
+                    out += t.copy(text = label.trim())
+                    out += t.copy(text = m.groupValues[2], cx = t.cx + t.height * 3)
+                }
+            }
+            return out
         }
 
         private fun rowToItems(row: List<Token>): List<ReceiptItem> {
