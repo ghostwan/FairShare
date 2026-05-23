@@ -2,6 +2,7 @@ package com.fairshare.data.ocr
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.fairshare.domain.model.ReceiptItem
 import com.fairshare.domain.repository.ReceiptParser
 import com.google.mlkit.vision.common.InputImage
@@ -61,10 +62,29 @@ class MlKitReceiptParser @Inject constructor(
                 )
             }
             .toList()
+        dumpTokensForDebug(tokens)
         return extractItems(tokens)
     }
 
+    /**
+     * Dumps every OCR element so a real-world bug can be reproduced as a unit-test fixture.
+     * View with:
+     *     adb logcat -s ReceiptOCR:V
+     * Each line: `text|cx|cy|height`
+     * Disabled in release builds.
+     */
+    private fun dumpTokensForDebug(tokens: List<Token>) {
+        if (!com.fairshare.BuildConfig.DEBUG) return
+        Log.v(TAG, "=== BEGIN receipt dump (${tokens.size} tokens) ===")
+        tokens.forEach { t ->
+            Log.v(TAG, "${t.text.replace('\n', ' ')}|${t.cx}|${t.cy}|${t.height}")
+        }
+        Log.v(TAG, "=== END receipt dump ===")
+    }
+
     companion object {
+        private const val TAG = "ReceiptOCR"
+
         /** Price pattern: optional minus, 1–4 digits, decimal separator, exactly 2 decimals.
          *  Accepts optional currency symbol after the number. */
         private val PRICE_REGEX = Regex("""^-?\d{1,4}[.,]\d{2}(?:€|EUR|USD|\$|£)?$""")
