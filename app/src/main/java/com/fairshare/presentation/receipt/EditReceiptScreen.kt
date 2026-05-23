@@ -109,6 +109,9 @@ fun EditReceiptScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
+                    item {
+                        PerPersonSummary(items = state.items, participants = participants)
+                    }
                 }
                 state.error?.let {
                     item { Text(it, color = MaterialTheme.colorScheme.error) }

@@ -167,6 +167,9 @@ fun ScanReceiptScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
+                    item {
+                        PerPersonSummary(items = state.items, participants = participants)
+                    }
                 }
             }
 
@@ -254,4 +257,56 @@ private fun createTempImageUri(context: Context): Uri {
     val dir = File(context.cacheDir, "receipts").apply { mkdirs() }
     val file = File.createTempFile("receipt_", ".jpg", dir)
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+/**
+ * Per-person breakdown shown at the bottom of a (scanned or edited) receipt,
+ * right below the global total. Mirrors the split logic of
+ * [com.fairshare.domain.usecase.AssignReceiptItemsUseCase]:
+ *  - each item's price is split equally between its assignees
+ *  - unassigned items are split equally between every participant
+ *  - the cent remainder is distributed deterministically to the first assignees
+ */
+@Composable
+internal fun PerPersonSummary(
+    items: List<com.fairshare.domain.model.ReceiptItem>,
+    participants: List<com.fairshare.domain.model.Participant>,
+) {
+    if (items.isEmpty() || participants.isEmpty()) return
+    val totals = remember(items, participants) {
+        val allIds = participants.map { it.id }
+        val acc = LinkedHashMap<Long, Long>().apply { allIds.forEach { put(it, 0L) } }
+        items.forEach { item ->
+            val assignees = item.assignedTo.toList().ifEmpty { allIds }
+            if (assignees.isEmpty()) return@forEach
+            val base = item.priceCents / assignees.size
+            val remainder = (item.priceCents - base * assignees.size).toInt()
+            assignees.forEachIndexed { i, pid ->
+                acc[pid] = (acc[pid] ?: 0L) + base + if (i < remainder) 1 else 0
+            }
+        }
+        acc
+    }
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "Détail par personne",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            participants.forEach { p ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(p.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        (totals[p.id] ?: 0L).centsToString(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+    }
 }
