@@ -1,10 +1,12 @@
 package com.fairshare.data.repository
 
 import com.fairshare.data.local.dao.ExpenseDao
-import com.fairshare.data.local.dao.ExpenseWithShares
+import com.fairshare.data.local.dao.ExpenseWithDetails
 import com.fairshare.data.local.entity.ExpenseEntity
+import com.fairshare.data.local.entity.ExpenseItemEntity
 import com.fairshare.data.local.entity.ExpenseShareEntity
 import com.fairshare.domain.model.Expense
+import com.fairshare.domain.model.ExpenseItem
 import com.fairshare.domain.model.ExpenseShare
 import com.fairshare.domain.repository.ExpenseRepository
 import kotlinx.coroutines.flow.Flow
@@ -20,32 +22,53 @@ class ExpenseRepositoryImpl @Inject constructor(
 
     override suspend fun get(id: Long): Expense? = dao.getById(id)?.toDomain()
 
-    override suspend fun add(expense: Expense): Long {
-        return dao.upsertWithShares(
-            expense.toEntity(),
-            expense.shares.map { it.toEntity(expense.id) },
-        )
-    }
-
-    override suspend fun update(expense: Expense) {
-        dao.upsertWithShares(
-            expense.toEntity(),
-            expense.shares.map { it.toEntity(expense.id) },
-        )
-    }
+    override suspend fun add(expense: Expense): Long = upsert(expense)
+    override suspend fun update(expense: Expense) { upsert(expense) }
 
     override suspend fun delete(id: Long) = dao.delete(id)
+
+    private suspend fun upsert(expense: Expense): Long {
+        val items = expense.items.map { item ->
+            // expenseId is rewritten by the DAO transaction once the row id is known.
+            val entity = ExpenseItemEntity(
+                id = 0L,
+                expenseId = expense.id,
+                label = item.label,
+                priceCents = item.priceCents,
+                quantity = item.quantity,
+                position = 0,
+            )
+            entity to item.assignedTo.toList()
+        }
+        return dao.upsertWithDetails(
+            expense.toEntity(),
+            expense.shares.map { it.toEntity(expense.id) },
+            items,
+        )
+    }
 }
 
-private fun ExpenseWithShares.toDomain() = Expense(
-    id = expense.id,
-    eventId = expense.eventId,
-    title = expense.title,
-    amountCents = expense.amountCents,
-    payerId = expense.payerId,
-    date = expense.date,
-    shares = shares.map { ExpenseShare(it.participantId, it.amountCents) },
-)
+private fun ExpenseWithDetails.toDomain(): Expense {
+    val sortedItems = items.sortedBy { it.item.position }.map { iwa ->
+        ExpenseItem(
+            id = iwa.item.id,
+            label = iwa.item.label,
+            priceCents = iwa.item.priceCents,
+            quantity = iwa.item.quantity,
+            assignedTo = iwa.assignments.map { it.participantId }.toSet(),
+        )
+    }
+    return Expense(
+        id = expense.id,
+        eventId = expense.eventId,
+        title = expense.title,
+        amountCents = expense.amountCents,
+        payerId = expense.payerId,
+        date = expense.date,
+        shares = shares.map { ExpenseShare(it.participantId, it.amountCents) },
+        items = sortedItems,
+    )
+}
 
 private fun Expense.toEntity() = ExpenseEntity(id, eventId, title, amountCents, payerId, date)
 private fun ExpenseShare.toEntity(expenseId: Long) =

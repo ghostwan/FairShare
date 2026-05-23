@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import com.fairshare.presentation.eventdetail.EventDetailScreen
 import com.fairshare.presentation.events.EventsScreen
 import com.fairshare.presentation.expense.AddExpenseScreen
+import com.fairshare.presentation.expense.EditExpenseRouter
 import com.fairshare.presentation.receipt.ScanReceiptScreen
 import com.fairshare.presentation.settings.SettingsScreen
 
@@ -51,7 +52,7 @@ fun FairShareNavGraph() {
                 navArgument(Route.ARG_EXPENSE_ID) { type = NavType.LongType },
             ),
         ) {
-            AddExpenseScreen(onDone = { nav.popBackStack() })
+            EditExpenseRouter(onDone = { nav.popBackStack() })
         }
         composable(
             Route.ScanReceipt.path,

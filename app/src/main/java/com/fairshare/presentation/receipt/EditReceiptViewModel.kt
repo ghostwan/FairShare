@@ -1,6 +1,5 @@
 package com.fairshare.presentation.receipt
 
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,74 +9,67 @@ import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.ReceiptItem
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
-import com.fairshare.domain.repository.ReceiptParser
-import com.fairshare.domain.repository.SettingsRepository
 import com.fairshare.domain.usecase.AssignReceiptItemsUseCase
-import com.fairshare.domain.usecase.ExpandReceiptQuantitiesUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-data class ScanReceiptState(
-    val title: String = "Ticket de caisse",
+data class EditReceiptState(
+    val title: String = "",
     val payerId: Long? = null,
     val items: List<ReceiptItem> = emptyList(),
-    val isScanning: Boolean = false,
+    val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
+    val notFound: Boolean = false,
 )
 
 @HiltViewModel
-class ScanReceiptViewModel @Inject constructor(
+class EditReceiptViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     participantRepository: ParticipantRepository,
-    private val parser: ReceiptParser,
     private val expenseRepository: ExpenseRepository,
     private val assignReceiptItems: AssignReceiptItemsUseCase,
-    private val expandReceiptQuantities: ExpandReceiptQuantitiesUseCase,
-    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    private val expenseId: Long = checkNotNull(savedStateHandle[Route.ARG_EXPENSE_ID])
 
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val expandQuantities: StateFlow<Boolean> =
-        settings.expandQuantities
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    private val _state = MutableStateFlow(EditReceiptState())
+    val state: StateFlow<EditReceiptState> = _state.asStateFlow()
 
-    private val _state = MutableStateFlow(ScanReceiptState())
-    val state: StateFlow<ScanReceiptState> = _state.asStateFlow()
-
-    fun setTitle(v: String) = _state.update { it.copy(title = v) }
-    fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
-
-    fun scan(uri: Uri) {
+    init {
         viewModelScope.launch {
-            _state.update { it.copy(isScanning = true, error = null) }
-            try {
-                val parsed = parser.parse(uri)
-                // Read the current setting *now* — cannot rely on the cold StateFlow's
-                // initial value because nothing in this VM stays subscribed to it.
-                val expand = settings.expandQuantities.first()
-                val expanded = expandReceiptQuantities(parsed, expand)
-                _state.update { it.copy(items = expanded, isScanning = false) }
-            } catch (e: Exception) {
-                _state.update { it.copy(isScanning = false, error = e.message ?: "Erreur OCR") }
+            val expense = expenseRepository.get(expenseId)
+            if (expense == null) {
+                _state.update { it.copy(isLoading = false, notFound = true) }
+                return@launch
+            }
+            _state.update {
+                it.copy(
+                    title = expense.title,
+                    payerId = expense.payerId,
+                    items = expense.items.map { ei -> ei.toReceiptItem() },
+                    isLoading = false,
+                )
             }
         }
     }
+
+    fun setTitle(v: String) = _state.update { it.copy(title = v) }
+    fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
 
     fun toggleAssignment(itemId: String, participantId: Long) = _state.update { s ->
         s.copy(items = s.items.map {
@@ -115,18 +107,22 @@ class ScanReceiptViewModel @Inject constructor(
                 val allIds = participants.value.map { it.id }
                 val shares = assignReceiptItems(s.items, allIds)
                 val total = totalCents()
-                val itemDetails = s.items.map { ri ->
+                val itemDetails = s.items.map {
                     ExpenseItem(
-                        label = ri.label,
-                        priceCents = ri.priceCents,
-                        quantity = ri.quantity,
-                        assignedTo = ri.assignedTo,
+                        label = it.label,
+                        priceCents = it.priceCents,
+                        quantity = it.quantity,
+                        assignedTo = it.assignedTo,
                     )
                 }
-                expenseRepository.add(
+                expenseRepository.update(
                     Expense(
-                        eventId = eventId, title = s.title.ifBlank { "Ticket de caisse" },
-                        amountCents = total, payerId = payer, shares = shares,
+                        id = expenseId,
+                        eventId = eventId,
+                        title = s.title.ifBlank { "Ticket de caisse" },
+                        amountCents = total,
+                        payerId = payer,
+                        shares = shares,
                         items = itemDetails,
                     )
                 )
@@ -135,4 +131,19 @@ class ScanReceiptViewModel @Inject constructor(
             }
         }
     }
+
+    fun delete(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            expenseRepository.delete(expenseId)
+            onSuccess()
+        }
+    }
 }
+
+private fun ExpenseItem.toReceiptItem() = ReceiptItem(
+    id = if (id != 0L) "db-$id" else UUID.randomUUID().toString(),
+    label = label,
+    priceCents = priceCents,
+    quantity = quantity,
+    assignedTo = assignedTo,
+)

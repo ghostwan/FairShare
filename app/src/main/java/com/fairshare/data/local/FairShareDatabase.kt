@@ -7,6 +7,8 @@ import com.fairshare.data.local.dao.ExpenseDao
 import com.fairshare.data.local.dao.ParticipantDao
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.local.entity.ExpenseEntity
+import com.fairshare.data.local.entity.ExpenseItemAssignmentEntity
+import com.fairshare.data.local.entity.ExpenseItemEntity
 import com.fairshare.data.local.entity.ExpenseShareEntity
 import com.fairshare.data.local.entity.ParticipantEntity
 
@@ -16,8 +18,10 @@ import com.fairshare.data.local.entity.ParticipantEntity
         ParticipantEntity::class,
         ExpenseEntity::class,
         ExpenseShareEntity::class,
+        ExpenseItemEntity::class,
+        ExpenseItemAssignmentEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class FairShareDatabase : RoomDatabase() {

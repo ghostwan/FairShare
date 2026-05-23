@@ -20,7 +20,10 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): FairShareDatabase =
-        Room.databaseBuilder(context, FairShareDatabase::class.java, "fairshare.db").build()
+        Room.databaseBuilder(context, FairShareDatabase::class.java, "fairshare.db")
+            // Schema is still iterating; nuke the DB on version bump (dev only).
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides fun provideEventDao(db: FairShareDatabase): EventDao = db.eventDao()
     @Provides fun provideParticipantDao(db: FairShareDatabase): ParticipantDao = db.participantDao()

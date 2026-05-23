@@ -183,7 +183,7 @@ fun ScanReceiptScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ReceiptItemRow(
+internal fun ReceiptItemRow(
     item: com.fairshare.domain.model.ReceiptItem,
     participants: List<com.fairshare.domain.model.Participant>,
     onToggle: (Long) -> Unit,
