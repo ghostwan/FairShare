@@ -10,13 +10,20 @@ import com.fairshare.presentation.eventdetail.EventDetailScreen
 import com.fairshare.presentation.events.EventsScreen
 import com.fairshare.presentation.expense.AddExpenseScreen
 import com.fairshare.presentation.receipt.ScanReceiptScreen
+import com.fairshare.presentation.settings.SettingsScreen
 
 @Composable
 fun FairShareNavGraph() {
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = Route.Events.path) {
         composable(Route.Events.path) {
-            EventsScreen(onOpenEvent = { id -> nav.navigate(Route.EventDetail.build(id)) })
+            EventsScreen(
+                onOpenEvent = { id -> nav.navigate(Route.EventDetail.build(id)) },
+                onOpenSettings = { nav.navigate(Route.Settings.path) },
+            )
+        }
+        composable(Route.Settings.path) {
+            SettingsScreen(onBack = { nav.popBackStack() })
         }
         composable(
             Route.EventDetail.path,
@@ -25,12 +32,24 @@ fun FairShareNavGraph() {
             EventDetailScreen(
                 onBack = { nav.popBackStack() },
                 onAddExpense = { id -> nav.navigate(Route.AddExpense.build(id)) },
+                onEditExpense = { eventId, expenseId ->
+                    nav.navigate(Route.EditExpense.build(eventId, expenseId))
+                },
                 onScanReceipt = { id -> nav.navigate(Route.ScanReceipt.build(id)) },
             )
         }
         composable(
             Route.AddExpense.path,
             arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType }),
+        ) {
+            AddExpenseScreen(onDone = { nav.popBackStack() })
+        }
+        composable(
+            Route.EditExpense.path,
+            arguments = listOf(
+                navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType },
+                navArgument(Route.ARG_EXPENSE_ID) { type = NavType.LongType },
+            ),
         ) {
             AddExpenseScreen(onDone = { nav.popBackStack() })
         }

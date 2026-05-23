@@ -10,7 +10,9 @@ import com.fairshare.domain.model.ReceiptItem
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import com.fairshare.domain.repository.ReceiptParser
+import com.fairshare.domain.repository.SettingsRepository
 import com.fairshare.domain.usecase.AssignReceiptItemsUseCase
+import com.fairshare.domain.usecase.ExpandReceiptQuantitiesUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +41,8 @@ class ScanReceiptViewModel @Inject constructor(
     private val parser: ReceiptParser,
     private val expenseRepository: ExpenseRepository,
     private val assignReceiptItems: AssignReceiptItemsUseCase,
+    private val expandReceiptQuantities: ExpandReceiptQuantitiesUseCase,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
@@ -46,6 +50,10 @@ class ScanReceiptViewModel @Inject constructor(
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val expandQuantities: StateFlow<Boolean> =
+        settings.expandQuantities
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     private val _state = MutableStateFlow(ScanReceiptState())
     val state: StateFlow<ScanReceiptState> = _state.asStateFlow()
@@ -57,8 +65,9 @@ class ScanReceiptViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isScanning = true, error = null) }
             try {
-                val items = parser.parse(uri)
-                _state.update { it.copy(items = items, isScanning = false) }
+                val parsed = parser.parse(uri)
+                val expanded = expandReceiptQuantities(parsed, expandQuantities.value)
+                _state.update { it.copy(items = expanded, isScanning = false) }
             } catch (e: Exception) {
                 _state.update { it.copy(isScanning = false, error = e.message ?: "Erreur OCR") }
             }
@@ -85,7 +94,7 @@ class ScanReceiptViewModel @Inject constructor(
     }
 
     fun addItem() = _state.update { s ->
-        s.copy(items = s.items + ReceiptItem(UUID.randomUUID().toString(), "", 0L))
+        s.copy(items = s.items + ReceiptItem(UUID.randomUUID().toString(), "", 0L, quantity = 1))
     }
 
     fun totalCents(): Long = state.value.items.sumOf { it.priceCents }

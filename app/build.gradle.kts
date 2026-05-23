@@ -67,6 +67,7 @@ dependencies {
     implementation(libs.camerax.view)
 
     implementation(libs.coil.compose)
+    implementation(libs.androidx.datastore.preferences)
 
     testImplementation("junit:junit:4.13.2")
 }

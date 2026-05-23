@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,13 +19,23 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun EventsScreen(
     onOpenEvent: (Long) -> Unit,
+    onOpenSettings: () -> Unit,
     vm: EventsViewModel = hiltViewModel(),
 ) {
     val events by vm.events.collectAsState()
     var showCreate by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("FairShare") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("FairShare") },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Réglages")
+                    }
+                },
+            )
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showCreate = true },

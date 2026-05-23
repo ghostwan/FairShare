@@ -125,10 +125,6 @@ class MlKitReceiptParser @Inject constructor(
             }
 
             return rows.flatMap { row -> rowToItems(row) }
-                // Same item appearing twice exactly is most likely a duplicate detection;
-                // we de-duplicate only if more than one row produced the same (label, price)
-                // pair — true quantity expansions yield several rows with the same label/price
-                // which we *do* want to keep. So we don't dedupe here anymore.
         }
 
         private fun rowToItems(row: List<Token>): List<ReceiptItem> {
@@ -138,8 +134,6 @@ class MlKitReceiptParser @Inject constructor(
             val (priceText, labelTokens) = if (priceIdx >= 0) {
                 sorted[priceIdx].text to (sorted.subList(0, priceIdx) + sorted.subList(priceIdx + 1, sorted.size))
             } else {
-                // Fallback: maybe price is fused to other characters (e.g. "12,90€" already a clean token,
-                // or "x12.50"). Try matching anywhere on the rightmost token.
                 val last = sorted.lastOrNull() ?: return emptyList()
                 val m = PRICE_ANY_REGEX.find(last.text) ?: return emptyList()
                 m.value to (sorted.dropLast(1))
@@ -153,8 +147,6 @@ class MlKitReceiptParser @Inject constructor(
             val totalCents = Math.round(price * 100)
 
             val rawLabel = labelTokens.joinToString(" ") { it.text }.trim()
-
-            // Detect a quantity prefix like "2x", "3 x", "2X", "x2", "2*" and split into N items.
             val (qty, cleanLabel) = extractQuantityAndLabel(rawLabel)
 
             val finalLabel = cleanLabel
@@ -165,27 +157,14 @@ class MlKitReceiptParser @Inject constructor(
             if (NOISE_PATTERNS.any { it.containsMatchIn(finalLabel) }) return emptyList()
             if (finalLabel.matches(Regex("""^[\d.,\s/%]+$"""))) return emptyList()
 
-            // When qty > 1 we split the total evenly with rounding correction so the sum still
-            // matches the printed amount. Each item keeps the same label so the user immediately
-            // sees "Bière / 5,50" repeated N times and can assign each one to a different person.
-            if (qty <= 1) {
-                return listOf(
-                    ReceiptItem(
-                        id = UUID.randomUUID().toString(),
-                        label = finalLabel.take(80),
-                        priceCents = totalCents,
-                    )
-                )
-            }
-            val base = totalCents / qty
-            val remainder = (totalCents - base * qty).toInt()
-            return (0 until qty).map { i ->
+            return listOf(
                 ReceiptItem(
                     id = UUID.randomUUID().toString(),
                     label = finalLabel.take(80),
-                    priceCents = base + if (i < remainder) 1 else 0,
+                    priceCents = totalCents,
+                    quantity = qty,
                 )
-            }
+            )
         }
 
         private val QTY_LEADING = Regex("""^\s*(\d{1,2})\s*[xX*]\s+(.+)$""")

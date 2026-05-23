@@ -28,6 +28,8 @@ data class AddExpenseState(
     val mode: SplitMode = SplitMode.EQUAL,
     val selectedIds: Set<Long> = emptySet(),
     val isSaving: Boolean = false,
+    val isLoading: Boolean = false,
+    val isEditMode: Boolean = false,
     val error: String? = null,
 )
 
@@ -40,13 +42,36 @@ class AddExpenseViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    private val editingExpenseId: Long? = savedStateHandle.get<Long>(Route.ARG_EXPENSE_ID)
 
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _state = MutableStateFlow(AddExpenseState())
+    private val _state = MutableStateFlow(AddExpenseState(isEditMode = editingExpenseId != null))
     val state: StateFlow<AddExpenseState> = _state.asStateFlow()
+
+    init {
+        editingExpenseId?.let { id ->
+            viewModelScope.launch {
+                _state.update { it.copy(isLoading = true) }
+                val expense = expenseRepository.get(id)
+                if (expense != null) {
+                    _state.update {
+                        it.copy(
+                            title = expense.title,
+                            amountText = String.format("%.2f", expense.amountCents / 100.0),
+                            payerId = expense.payerId,
+                            selectedIds = expense.shares.map { s -> s.participantId }.toSet(),
+                            isLoading = false,
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(isLoading = false, error = "Dépense introuvable") }
+                }
+            }
+        }
+    }
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setAmount(v: String) = _state.update { it.copy(amountText = v) }
@@ -70,15 +95,24 @@ class AddExpenseViewModel @Inject constructor(
             else -> viewModelScope.launch {
                 _state.update { it.copy(isSaving = true, error = null) }
                 val shares = computeShares(amount, payees, SplitMode.EQUAL)
-                expenseRepository.add(
-                    Expense(
-                        eventId = eventId, title = s.title.trim(),
-                        amountCents = amount, payerId = payer, shares = shares,
-                    )
+                val expense = Expense(
+                    id = editingExpenseId ?: 0L,
+                    eventId = eventId, title = s.title.trim(),
+                    amountCents = amount, payerId = payer, shares = shares,
                 )
+                if (editingExpenseId != null) expenseRepository.update(expense)
+                else expenseRepository.add(expense)
                 _state.update { it.copy(isSaving = false) }
                 onSuccess()
             }
+        }
+    }
+
+    fun delete(onSuccess: () -> Unit) {
+        val id = editingExpenseId ?: return
+        viewModelScope.launch {
+            expenseRepository.delete(id)
+            onSuccess()
         }
     }
 }

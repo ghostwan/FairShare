@@ -196,6 +196,14 @@ private fun ReceiptItemRow(
     OutlinedCard {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (item.quantity > 1) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${item.quantity}×") },
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = label, onValueChange = {
                         label = it

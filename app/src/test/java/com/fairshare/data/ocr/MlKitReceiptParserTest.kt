@@ -55,38 +55,18 @@ class MlKitReceiptParserTest {
     }
 
     @Test
-    fun `quantity prefix splits into multiple items at unit price`() {
+    fun `quantity prefix is parsed as quantity metadata`() {
         val items = extractItems(build(listOf(
             listOf("2x" to 20, "Bière" to 80, "11,00" to 700),
             listOf("3 x" to 20, "Café" to 90, "6,00" to 700),
         )))
-        assertEquals(5, items.size)
-        // 2 bières at 5,50 each
+        assertEquals(2, items.size)
         assertEquals("Bière", items[0].label)
-        assertEquals(550L, items[0].priceCents)
-        assertEquals("Bière", items[1].label)
-        assertEquals(550L, items[1].priceCents)
-        // 3 cafés at 2,00 each
-        assertEquals("Café", items[2].label)
-        assertEquals(200L, items[2].priceCents)
-        assertEquals("Café", items[3].label)
-        assertEquals(200L, items[3].priceCents)
-        assertEquals("Café", items[4].label)
-        assertEquals(200L, items[4].priceCents)
-        // Sum still matches printed totals
-        assertEquals(1100L, items.take(2).sumOf { it.priceCents })
-        assertEquals(600L, items.drop(2).sumOf { it.priceCents })
-    }
-
-    @Test
-    fun `quantity split with rounding remainder keeps total exact`() {
-        // 3 x 10,00 = 10,00 — split as 3,34 / 3,33 / 3,33
-        val items = extractItems(build(listOf(
-            listOf("3x" to 20, "Truc" to 80, "10,00" to 700),
-        )))
-        assertEquals(3, items.size)
-        assertEquals(1000L, items.sumOf { it.priceCents })
-        assertEquals(setOf(334L, 333L), items.map { it.priceCents }.toSet())
+        assertEquals(1100L, items[0].priceCents)
+        assertEquals(2, items[0].quantity)
+        assertEquals("Café", items[1].label)
+        assertEquals(600L, items[1].priceCents)
+        assertEquals(3, items[1].quantity)
     }
 
     @Test
@@ -94,9 +74,10 @@ class MlKitReceiptParserTest {
         val items = extractItems(build(listOf(
             listOf("2xBière" to 80, "11,00" to 700),
         )))
-        assertEquals(2, items.size)
+        assertEquals(1, items.size)
         assertEquals("Bière", items[0].label)
-        assertEquals(550L, items[0].priceCents)
+        assertEquals(1100L, items[0].priceCents)
+        assertEquals(2, items[0].quantity)
     }
 
     @Test
@@ -104,9 +85,10 @@ class MlKitReceiptParserTest {
         val items = extractItems(build(listOf(
             listOf("Salade" to 30, "x" to 100, "2" to 130, "12,00" to 700),
         )))
-        assertEquals(2, items.size)
+        assertEquals(1, items.size)
         assertEquals("Salade", items[0].label)
-        assertEquals(600L, items[0].priceCents)
+        assertEquals(1200L, items[0].priceCents)
+        assertEquals(2, items[0].quantity)
     }
 
     @Test
@@ -136,12 +118,14 @@ class MlKitReceiptParserTest {
         )))
 
         val labels = items.map { it.label }
-        // "2x Verre de vin 12,00" expands into 2 entries at 6,00 each
+        // "2x Verre de vin 12,00" stays as one item with quantity=2; expansion is now
+        // performed by ExpandReceiptQuantitiesUseCase depending on user settings.
         assertEquals(
-            listOf("Entrecôte frites", "Saumon grillé", "Verre de vin", "Verre de vin", "Café gourmand"),
+            listOf("Entrecôte frites", "Saumon grillé", "Verre de vin", "Café gourmand"),
             labels,
         )
-        assertEquals(listOf(1950L, 1700L, 600L, 600L, 850L), items.map { it.priceCents })
+        assertEquals(listOf(1950L, 1700L, 1200L, 850L), items.map { it.priceCents })
+        assertEquals(listOf(1, 1, 2, 1), items.map { it.quantity })
     }
 
     @Test

@@ -26,6 +26,7 @@ private enum class Tab(val label: String) { Expenses("Dépenses"), Balances("Sol
 fun EventDetailScreen(
     onBack: () -> Unit,
     onAddExpense: (Long) -> Unit,
+    onEditExpense: (eventId: Long, expenseId: Long) -> Unit,
     onScanReceipt: (Long) -> Unit,
     vm: EventDetailViewModel = hiltViewModel(),
 ) {
@@ -75,7 +76,12 @@ fun EventDetailScreen(
                 }
             }
             when (tab) {
-                Tab.Expenses -> ExpensesList(state, currency, onDelete = vm::removeExpense)
+                Tab.Expenses -> ExpensesList(
+                    state = state,
+                    currency = currency,
+                    onClick = { id -> onEditExpense(vm.eventId, id) },
+                    onDelete = vm::removeExpense,
+                )
                 Tab.Balances -> BalancesList(state, currency)
                 Tab.Participants -> ParticipantsList(state, onRemove = vm::removeParticipant)
             }
@@ -99,7 +105,12 @@ fun EventDetailScreen(
 }
 
 @Composable
-private fun ExpensesList(state: EventDetailState, currency: String, onDelete: (Long) -> Unit) {
+private fun ExpensesList(
+    state: EventDetailState,
+    currency: String,
+    onClick: (Long) -> Unit,
+    onDelete: (Long) -> Unit,
+) {
     if (state.expenses.isEmpty()) {
         EmptyHint("Aucune dépense. Ajoute-en une ou scanne un ticket de caisse.")
         return
@@ -107,7 +118,7 @@ private fun ExpensesList(state: EventDetailState, currency: String, onDelete: (L
     val byId = state.participants.associateBy { it.id }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(state.expenses, key = { it.id }) { e ->
-            ElevatedCard {
+            ElevatedCard(onClick = { onClick(e.id) }) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(e.title, style = MaterialTheme.typography.titleMedium)
