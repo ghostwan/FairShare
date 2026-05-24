@@ -26,6 +26,8 @@ sealed class Route(val path: String) {
     data object ApplyChanges : Route("apply/{deepLink}") {
         fun build(deepLink: String) = "apply/$deepLink"
     }
+    /** Camera-based QR scanner used to bootstrap a join from another device. */
+    data object ScanInvitation : Route("scan-invitation")
 
     companion object {
         const val ARG_EVENT_ID = "eventId"

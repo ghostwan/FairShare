@@ -13,6 +13,7 @@ import com.fairshare.presentation.events.EventsScreen
 import com.fairshare.presentation.expense.AddExpenseScreen
 import com.fairshare.presentation.expense.EditExpenseRouter
 import com.fairshare.presentation.receipt.ScanReceiptScreen
+import com.fairshare.presentation.scan.ScanInvitationScreen
 import com.fairshare.presentation.settings.SettingsScreen
 import com.fairshare.presentation.share.ShareChangesScreen
 import java.util.Base64
@@ -43,6 +44,7 @@ fun FairShareNavGraph(
             EventsScreen(
                 onOpenEvent = { id -> nav.navigate(Route.EventDetail.build(id)) },
                 onOpenSettings = { nav.navigate(Route.Settings.path) },
+                onScanInvitation = { nav.navigate(Route.ScanInvitation.path) },
             )
         }
         composable(Route.Settings.path) {
@@ -94,6 +96,19 @@ fun FairShareNavGraph(
             arguments = listOf(navArgument(Route.ARG_DEEP_LINK) { type = NavType.StringType }),
         ) {
             ApplyChangesScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Route.ScanInvitation.path) {
+            ScanInvitationScreen(
+                onBack = { nav.popBackStack() },
+                onScanned = { url ->
+                    val encoded = Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString(url.toByteArray(Charsets.UTF_8))
+                    // Replace the scanner from the back stack so "back" returns to Events.
+                    nav.navigate(Route.ApplyChanges.build(encoded)) {
+                        popUpTo(Route.ScanInvitation.path) { inclusive = true }
+                    }
+                },
+            )
         }
     }
 }

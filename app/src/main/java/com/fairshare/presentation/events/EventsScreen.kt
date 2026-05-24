@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun EventsScreen(
     onOpenEvent: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onScanInvitation: () -> Unit = {},
     vm: EventsViewModel = hiltViewModel(),
 ) {
     val events by vm.events.collectAsState()
@@ -30,6 +32,9 @@ fun EventsScreen(
             TopAppBar(
                 title = { Text("FairShare") },
                 actions = {
+                    IconButton(onClick = onScanInvitation) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Scanner une invitation")
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Réglages")
                     }

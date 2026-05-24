@@ -4,12 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,9 +42,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fairshare.data.sync.QrCodeGenerator
 
 /**
  * Minimal UI for the sneakernet "Share changes" flow (DESIGN.md §6.1).
@@ -148,6 +154,7 @@ private fun Content(
                     "${url.length} caractères."
         }
         Text(helper, style = MaterialTheme.typography.bodyMedium)
+        QrCodeBlock(content = url)
         OutlinedTextField(
             value = url,
             onValueChange = {},
@@ -163,6 +170,37 @@ private fun Content(
         Button(onClick = onShare, modifier = Modifier.fillMaxSize()) {
             Icon(Icons.Default.Share, contentDescription = null)
             Text("  Partager…")
+        }
+    }
+}
+
+@Composable
+private fun QrCodeBlock(content: String) {
+    // ZXing returns a bitmap sized to its module grid (often smaller than requested).
+    // We render at a fixed 720px source which gives crisp output for typical sneakernet
+    // payloads (~2 KB) when downscaled into a 280dp Image.
+    val bitmap = remember(content) {
+        runCatching { QrCodeGenerator.generate(content, sizePx = 720) }.getOrNull()
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .padding(8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "QR code",
+                modifier = Modifier.size(280.dp),
+            )
+        } else {
+            Text(
+                "QR code indisponible (payload trop long)",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Black,
+            )
         }
     }
 }
