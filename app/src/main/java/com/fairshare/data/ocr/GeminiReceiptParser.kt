@@ -59,6 +59,13 @@ class GeminiReceiptParser @Inject constructor(
         require(apiKey.isNotEmpty()) {
             "Clé API Gemini manquante — renseigne-la dans les Réglages."
         }
+        // Safe diagnostic: only length + first/last 4 chars so the user can
+        // confirm in logcat that the right key is actually being used.
+        Log.i(
+            TAG,
+            "Using model=$model, key length=${apiKey.length}, " +
+                "prefix=${apiKey.take(4)}…${apiKey.takeLast(4)}",
+        )
 
         val bytes = context.contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
             ?: error("Impossible de lire l'image sélectionnée")
