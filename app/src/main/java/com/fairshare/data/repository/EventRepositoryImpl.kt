@@ -9,6 +9,7 @@ import com.fairshare.domain.model.sync.EventSnapshot
 import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.repository.EventRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.security.SecureRandom
 import java.util.UUID
@@ -42,13 +43,19 @@ class EventRepositoryImpl @Inject constructor(
     private val secureRandom = SecureRandom()
 
     override fun observeEvents(): Flow<List<Event>> =
-        dao.observeActive().map { list -> list.map { it.toDomain() } }
+        dao.observeActive()
+            .map { list -> list.map { it.toDomain() } }
+            .distinctUntilChanged()
 
     override fun observeArchivedEvents(): Flow<List<Event>> =
-        dao.observeArchived().map { list -> list.map { it.toDomain() } }
+        dao.observeArchived()
+            .map { list -> list.map { it.toDomain() } }
+            .distinctUntilChanged()
 
     override fun observeEvent(id: String): Flow<Event?> =
-        dao.observeById(id).map { it?.toDomain() }
+        dao.observeById(id)
+            .map { it?.toDomain() }
+            .distinctUntilChanged()
 
     override suspend fun create(event: Event): String {
         val id = event.id.ifBlank { UUID.randomUUID().toString() }

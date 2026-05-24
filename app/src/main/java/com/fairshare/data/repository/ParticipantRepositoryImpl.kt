@@ -8,6 +8,7 @@ import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.model.sync.ParticipantSnapshot
 import com.fairshare.domain.repository.ParticipantRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
@@ -28,7 +29,9 @@ class ParticipantRepositoryImpl @Inject constructor(
 ) : ParticipantRepository {
 
     override fun observeByEvent(eventId: String): Flow<List<Participant>> =
-        dao.observeByEvent(eventId).map { list -> list.map { it.toDomain() } }
+        dao.observeByEvent(eventId)
+            .map { list -> list.map { it.toDomain() } }
+            .distinctUntilChanged()
 
     override suspend fun getByEvent(eventId: String): List<Participant> =
         dao.getByEvent(eventId).map { it.toDomain() }

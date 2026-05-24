@@ -42,13 +42,15 @@ class EventsViewModel @Inject constructor(
 
     /**
      * Starts the foreground polling loop. Called from the screen's
-     * ON_RESUME. Does a visible refresh first, then a silent pull every
-     * [POLL_INTERVAL_MS] until [stopPolling] is invoked (ON_PAUSE).
+     * ON_RESUME. Performs an immediate silent pull (no spinner) then
+     * ticks every [POLL_INTERVAL_MS] until [stopPolling]. The
+     * pull-to-refresh spinner is reserved for explicit user gestures
+     * so the UI doesn't flash on every screen resume.
      */
     fun resumePolling() {
         if (pollJob?.isActive == true) return
-        refresh()
         pollJob = viewModelScope.launch {
+            silentRefresh()
             while (isActive) {
                 delay(POLL_INTERVAL_MS)
                 silentRefresh()

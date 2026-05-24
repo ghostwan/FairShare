@@ -67,13 +67,15 @@ class EventDetailViewModel @Inject constructor(
     private var pollJob: Job? = null
 
     /**
-     * Starts the foreground polling loop scoped to this event.
-     * Called from the screen ON_RESUME, cancelled on ON_PAUSE.
+     * Starts the foreground polling loop scoped to this event. Called
+     * from the screen ON_RESUME, cancelled on ON_PAUSE. The first tick
+     * is silent (no spinner) so navigating back to the screen doesn't
+     * flash the refresh indicator; only manual pull-to-refresh shows it.
      */
     fun resumePolling() {
         if (pollJob?.isActive == true) return
-        refresh()
         pollJob = viewModelScope.launch {
+            silentRefresh()
             while (isActive) {
                 delay(POLL_INTERVAL_MS)
                 silentRefresh()

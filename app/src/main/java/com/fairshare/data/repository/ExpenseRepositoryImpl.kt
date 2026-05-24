@@ -12,6 +12,7 @@ import com.fairshare.domain.model.sync.ExpenseSnapshot
 import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.repository.ExpenseRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
@@ -35,7 +36,9 @@ class ExpenseRepositoryImpl @Inject constructor(
 ) : ExpenseRepository {
 
     override fun observeByEvent(eventId: String): Flow<List<Expense>> =
-        dao.observeByEvent(eventId).map { list -> list.map { it.toDomain() } }
+        dao.observeByEvent(eventId)
+            .map { list -> list.map { it.toDomain() } }
+            .distinctUntilChanged()
 
     override suspend fun get(id: String): Expense? = dao.getById(id)?.toDomain()
 
