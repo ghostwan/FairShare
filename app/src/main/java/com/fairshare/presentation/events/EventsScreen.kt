@@ -7,7 +7,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -27,12 +30,14 @@ import com.fairshare.domain.model.Event
 fun EventsScreen(
     onOpenEvent: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenArchived: () -> Unit = {},
     onScanInvitation: () -> Unit = {},
     vm: EventsViewModel = hiltViewModel(),
 ) {
     val events by vm.events.collectAsState()
     val isRefreshing by vm.isRefreshing.collectAsState()
     var showCreate by rememberSaveable { mutableStateOf(false) }
+    var contextMenu by remember { mutableStateOf<Event?>(null) }
     var pendingDelete by remember { mutableStateOf<Event?>(null) }
 
     // Trigger a sync every time the screen comes back to the foreground,
@@ -48,6 +53,9 @@ fun EventsScreen(
                 actions = {
                     IconButton(onClick = onScanInvitation) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Scanner une invitation")
+                    }
+                    IconButton(onClick = onOpenArchived) {
+                        Icon(Icons.Default.Inventory2, contentDescription = "Événements archivés")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Réglages")
@@ -87,7 +95,7 @@ fun EventsScreen(
                         ElevatedCard(
                             modifier = Modifier.combinedClickable(
                                 onClick = { onOpenEvent(e.id) },
-                                onLongClick = { pendingDelete = e },
+                                onLongClick = { contextMenu = e },
                             ),
                         ) {
                             Column(Modifier.padding(16.dp)) {
@@ -110,6 +118,51 @@ fun EventsScreen(
             onCreate = { name, currency, participants ->
                 vm.createEvent(name, currency, participants)
                 showCreate = false
+            },
+        )
+    }
+
+    contextMenu?.let { ev ->
+        AlertDialog(
+            onDismissRequest = { contextMenu = null },
+            title = { Text(ev.name) },
+            text = {
+                Column {
+                    ListItem(
+                        leadingContent = { Icon(Icons.Default.Archive, null) },
+                        headlineContent = { Text("Archiver") },
+                        supportingContent = {
+                            Text("L'événement est masqué de la liste principale " +
+                                "sur tous les appareils. Il reste consultable dans " +
+                                "« Événements archivés ».")
+                        },
+                        modifier = Modifier.combinedClickable(
+                            onClick = {
+                                vm.setArchived(ev.id, archived = true)
+                                contextMenu = null
+                            },
+                            onLongClick = {},
+                        ),
+                    )
+                    ListItem(
+                        leadingContent = { Icon(Icons.Default.Delete, null) },
+                        headlineContent = { Text("Supprimer") },
+                        supportingContent = {
+                            Text("Suppression locale uniquement. Les autres " +
+                                "appareils gardent leur copie.")
+                        },
+                        modifier = Modifier.combinedClickable(
+                            onClick = {
+                                pendingDelete = ev
+                                contextMenu = null
+                            },
+                            onLongClick = {},
+                        ),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { contextMenu = null }) { Text("Annuler") }
             },
         )
     }

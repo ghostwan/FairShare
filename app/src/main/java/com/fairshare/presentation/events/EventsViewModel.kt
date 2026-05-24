@@ -11,12 +11,13 @@ import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -99,6 +100,21 @@ class EventsViewModel @Inject constructor(
 
     fun deleteEvent(id: String) {
         viewModelScope.launch { eventRepository.delete(id) }
+    }
+
+    /**
+     * Toggle the archive flag. The change is an `EventUpsert` op that
+     * propagates LWW-style through the standard sync pipeline, so all
+     * devices see the same archived state once they pull. Hidden from
+     * the main list locally as soon as the op is applied.
+     */
+    fun setArchived(id: String, archived: Boolean) {
+        viewModelScope.launch {
+            val current = eventRepository.observeEvent(id).first() ?: return@launch
+            if (current.archived == archived) return@launch
+            eventRepository.update(current.copy(archived = archived))
+            SyncWorker.enqueueOneShot(context, id)
+        }
     }
 
     override fun onCleared() {

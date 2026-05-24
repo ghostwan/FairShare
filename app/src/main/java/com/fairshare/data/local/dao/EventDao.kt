@@ -13,6 +13,12 @@ interface EventDao {
     @Query("SELECT * FROM events ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<EventEntity>>
 
+    @Query("SELECT * FROM events WHERE archived = 0 ORDER BY createdAt DESC")
+    fun observeActive(): Flow<List<EventEntity>>
+
+    @Query("SELECT * FROM events WHERE archived = 1 ORDER BY createdAt DESC")
+    fun observeArchived(): Flow<List<EventEntity>>
+
     @Query("SELECT * FROM events WHERE id = :id")
     fun observeById(id: String): Flow<EventEntity?>
 

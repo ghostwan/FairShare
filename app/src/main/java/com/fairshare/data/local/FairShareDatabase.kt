@@ -24,7 +24,7 @@ import com.fairshare.data.local.entity.ParticipantEntity
         ExpenseItemAssignmentEntity::class,
         OperationEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class FairShareDatabase : RoomDatabase() {

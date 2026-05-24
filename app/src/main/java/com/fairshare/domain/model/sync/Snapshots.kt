@@ -16,6 +16,14 @@ data class EventSnapshot(
     val description: String? = null,
     val currency: String = "EUR",
     val createdAt: Long,
+    /**
+     * Archive flag. Travels through LWW like every other snapshot field:
+     * the latest `EventUpsert` wins, so flipping it on any device
+     * propagates via the standard sync pipeline. Defaulted to `false`
+     * for wire-format backward compatibility (ignoreUnknownKeys is on,
+     * older payloads without this field decode as archived = false).
+     */
+    val archived: Boolean = false,
 )
 
 /** Wire-format snapshot of a [com.fairshare.domain.model.Participant]. */

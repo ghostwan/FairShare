@@ -164,6 +164,7 @@ class OperationApplier @Inject constructor(
                             currency = snap.currency,
                             createdAt = snap.createdAt,
                             encryptionKey = existingKey,
+                            archived = snap.archived,
                         ),
                     )
                 }

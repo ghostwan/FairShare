@@ -24,6 +24,7 @@ data class EventEntity(
     val currency: String,
     val createdAt: Long,
     val encryptionKey: ByteArray,
+    val archived: Boolean = false,
 ) {
     // ByteArray invalidates the data class equals/hashCode; override so
     // Room's diff-against-current works correctly.
@@ -35,7 +36,8 @@ data class EventEntity(
             description == other.description &&
             currency == other.currency &&
             createdAt == other.createdAt &&
-            encryptionKey.contentEquals(other.encryptionKey)
+            encryptionKey.contentEquals(other.encryptionKey) &&
+            archived == other.archived
     }
 
     override fun hashCode(): Int {
@@ -45,6 +47,7 @@ data class EventEntity(
         result = 31 * result + currency.hashCode()
         result = 31 * result + createdAt.hashCode()
         result = 31 * result + encryptionKey.contentHashCode()
+        result = 31 * result + archived.hashCode()
         return result
     }
 }

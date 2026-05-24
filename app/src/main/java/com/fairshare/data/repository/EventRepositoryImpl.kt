@@ -42,7 +42,10 @@ class EventRepositoryImpl @Inject constructor(
     private val secureRandom = SecureRandom()
 
     override fun observeEvents(): Flow<List<Event>> =
-        dao.observeAll().map { list -> list.map { it.toDomain() } }
+        dao.observeActive().map { list -> list.map { it.toDomain() } }
+
+    override fun observeArchivedEvents(): Flow<List<Event>> =
+        dao.observeArchived().map { list -> list.map { it.toDomain() } }
 
     override fun observeEvent(id: String): Flow<Event?> =
         dao.observeById(id).map { it?.toDomain() }
@@ -59,6 +62,7 @@ class EventRepositoryImpl @Inject constructor(
                 currency = event.currency,
                 createdAt = event.createdAt,
                 encryptionKey = key,
+                archived = event.archived,
             ),
         )
         applier.applyLocal(
@@ -96,11 +100,12 @@ class EventRepositoryImpl @Inject constructor(
     }
 }
 
-private fun EventEntity.toDomain() = Event(id, name, description, currency, createdAt)
+private fun EventEntity.toDomain() = Event(id, name, description, currency, createdAt, archived)
 private fun Event.toSnapshot() = EventSnapshot(
     id = id,
     name = name,
     description = description,
     currency = currency,
     createdAt = createdAt,
+    archived = archived,
 )

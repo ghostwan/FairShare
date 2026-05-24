@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.fairshare.presentation.apply.ApplyChangesScreen
+import com.fairshare.presentation.archived.ArchivedEventsScreen
 import com.fairshare.presentation.eventdetail.EventDetailScreen
 import com.fairshare.presentation.events.EventsScreen
 import com.fairshare.presentation.expense.AddExpenseScreen
@@ -44,8 +45,12 @@ fun FairShareNavGraph(
             EventsScreen(
                 onOpenEvent = { id -> nav.navigate(Route.EventDetail.build(id)) },
                 onOpenSettings = { nav.navigate(Route.Settings.path) },
+                onOpenArchived = { nav.navigate(Route.Archived.path) },
                 onScanInvitation = { nav.navigate(Route.ScanInvitation.path) },
             )
+        }
+        composable(Route.Archived.path) {
+            ArchivedEventsScreen(onBack = { nav.popBackStack() })
         }
         composable(Route.Settings.path) {
             SettingsScreen(onBack = { nav.popBackStack() })

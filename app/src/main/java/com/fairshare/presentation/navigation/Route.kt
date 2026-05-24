@@ -29,6 +29,9 @@ sealed class Route(val path: String) {
     /** Camera-based QR scanner used to bootstrap a join from another device. */
     data object ScanInvitation : Route("scan-invitation")
 
+    /** Listing of events that have been archived (LWW `archived` flag). */
+    data object Archived : Route("archived")
+
     companion object {
         const val ARG_EVENT_ID = "eventId"
         const val ARG_EXPENSE_ID = "expenseId"
