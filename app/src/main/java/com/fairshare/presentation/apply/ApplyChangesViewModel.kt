@@ -32,6 +32,7 @@ import javax.inject.Inject
 data class ApplyChangesState(
     val loading: Boolean = true,
     val url: String? = null,
+    val kind: SneakernetImporter.Kind? = null,
     val eventName: String? = null,
     val eventId: String? = null,
     val opCount: Int = 0,
@@ -68,6 +69,7 @@ class ApplyChangesViewModel @Inject constructor(
                     _state.value = ApplyChangesState(
                         loading = false,
                         url = url,
+                        kind = p.kind,
                         eventName = p.eventName,
                         eventId = p.eventId,
                         opCount = p.ops.size,
@@ -106,8 +108,8 @@ class ApplyChangesViewModel @Inject constructor(
         SneakernetImporter.ImportError.SignatureMismatch ->
             "Signature invalide. Mauvaise clé ou lien altéré."
         SneakernetImporter.ImportError.EventNotJoined ->
-            "Évènement inconnu sur cet appareil. La fonction « Rejoindre " +
-                "via invitation » arrive dans un prochain commit."
+            "Évènement inconnu sur cet appareil. Demande un lien " +
+                "d'invitation (fairshare://join) à l'organisateur."
         is SneakernetImporter.ImportError.PayloadInvalid -> "Payload invalide."
         null -> t.message ?: "Erreur inconnue."
     }

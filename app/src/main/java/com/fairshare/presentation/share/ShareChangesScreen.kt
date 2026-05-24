@@ -25,6 +25,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -89,6 +92,8 @@ fun ShareChangesScreen(
             when {
                 state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.url != null -> Content(
+                    mode = state.mode,
+                    onModeChange = vm::setMode,
                     url = state.url!!,
                     opCount = state.opCount,
                     onCopy = { copyToClipboard(context, state.url!!) },
@@ -105,6 +110,8 @@ fun ShareChangesScreen(
 
 @Composable
 private fun Content(
+    mode: ShareChangesState.Mode,
+    onModeChange: (ShareChangesState.Mode) -> Unit,
     url: String,
     opCount: Int,
     onCopy: () -> Unit,
@@ -117,15 +124,33 @@ private fun Content(
             .padding(PaddingValues(horizontal = 16.dp, vertical = 16.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            "$opCount opération${if (opCount > 1) "s" else ""} à partager.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxSize()) {
+            val modes = ShareChangesState.Mode.entries
+            modes.forEachIndexed { index, m ->
+                SegmentedButton(
+                    selected = mode == m,
+                    onClick = { onModeChange(m) },
+                    shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                ) {
+                    Text(if (m == ShareChangesState.Mode.SYNC) "Sync" else "Invitation")
+                }
+            }
+        }
+        val helper = when (mode) {
+            ShareChangesState.Mode.SYNC ->
+                "Pour un appareil qui a déjà rejoint l'évènement. " +
+                    "$opCount opération${if (opCount > 1) "s" else ""}."
+            ShareChangesState.Mode.JOIN ->
+                "Invitation à rejoindre. Le lien contient la clé : ne le partage " +
+                    "qu'avec des personnes de confiance. " +
+                    "$opCount opération${if (opCount > 1) "s" else ""} dans la seed."
+        }
+        Text(helper, style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(
             value = url,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Lien fairshare://") },
+            label = { Text(if (mode == ShareChangesState.Mode.SYNC) "Lien fairshare://sync" else "Lien fairshare://join") },
             modifier = Modifier.fillMaxSize(),
             maxLines = 8,
         )

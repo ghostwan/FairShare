@@ -37,10 +37,32 @@ internal object SneakernetCodec {
 
     const val SCHEME = "fairshare"
     const val SYNC_HOST = "sync"
+    const val JOIN_HOST = "join"
     private const val MAC_INFO = "fairshare-sneakernet-mac"
 
     /** Returned by [decode] on a valid bundle. */
     data class Decoded(val eventId: String, val ops: List<Operation>)
+
+    /** Returned by [decodeJoin] on a valid invitation. */
+    data class DecodedJoin(
+        val eventId: String,
+        val eventKey: ByteArray,
+        val ops: List<Operation>,
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is DecodedJoin) return false
+            return eventId == other.eventId &&
+                eventKey.contentEquals(other.eventKey) &&
+                ops == other.ops
+        }
+        override fun hashCode(): Int {
+            var h = eventId.hashCode()
+            h = 31 * h + eventKey.contentHashCode()
+            h = 31 * h + ops.hashCode()
+            return h
+        }
+    }
 
     /** Reasons [decode] can fail. */
     sealed interface DecodeError {
@@ -127,8 +149,86 @@ internal object SneakernetCodec {
     private fun macKey(eventKey: ByteArray): ByteArray =
         SyncCrypto.hkdfSha256(eventKey, MAC_INFO.toByteArray(Charsets.US_ASCII))
 
-    private fun parseSyncUrl(url: String): Map<String, String>? {
-        val prefix = "$SCHEME://$SYNC_HOST?"
+    /**
+     * Builds a `fairshare://join` invitation URL. Unlike [encode],
+     * the URL carries the 32-byte [eventKey] itself so a fresh device
+     * can bootstrap without out-of-band key exchange. The seed is
+     * typically the whole op log, so the joining device materializes
+     * the event to parity in a single import.
+     */
+    fun encodeJoin(eventId: String, ops: List<Operation>, eventKey: ByteArray): String {
+        require(eventKey.size == 32) { "eventKey must be 32 bytes, got ${eventKey.size}" }
+        require(ops.all { it.eventId == eventId }) {
+            "SneakernetCodec.encodeJoin: all ops must share eventId=$eventId"
+        }
+        val seedBytes = json.encodeToString(ListSerializer(Operation.serializer()), ops)
+            .toByteArray(Charsets.UTF_8)
+        val seed = base64UrlEncode(gzip(seedBytes))
+        val key = base64UrlEncode(eventKey)
+        val mac = base64UrlEncode(
+            SyncCrypto.hmacSha256(macKey(eventKey), seed.toByteArray(Charsets.US_ASCII)),
+        )
+        return "$SCHEME://$JOIN_HOST?event=$eventId&key=$key&seed=$seed&sig=$mac"
+    }
+
+    /** Parses an invitation URL, verifies its HMAC, returns the bundle. */
+    fun decodeJoin(url: String): Result<DecodedJoin> {
+        val params = parseJoinUrl(url) ?: return Result.failure(
+            DecodeException(DecodeError.MalformedUrl),
+        )
+        val eventId = params["event"] ?: return Result.failure(
+            DecodeException(DecodeError.MissingFields),
+        )
+        val keyParam = params["key"] ?: return Result.failure(
+            DecodeException(DecodeError.MissingFields),
+        )
+        val seed = params["seed"] ?: return Result.failure(
+            DecodeException(DecodeError.MissingFields),
+        )
+        val sig = params["sig"] ?: return Result.failure(
+            DecodeException(DecodeError.MissingFields),
+        )
+
+        val eventKey = runCatching { base64UrlDecode(keyParam) }
+            .getOrElse { return Result.failure(DecodeException(DecodeError.MalformedUrl)) }
+        if (eventKey.size != 32) {
+            return Result.failure(DecodeException(DecodeError.MalformedUrl))
+        }
+
+        val expected = SyncCrypto.hmacSha256(
+            macKey(eventKey),
+            seed.toByteArray(Charsets.US_ASCII),
+        )
+        val provided = runCatching { base64UrlDecode(sig) }
+            .getOrElse {
+                return Result.failure(DecodeException(DecodeError.SignatureMismatch))
+            }
+        if (!SyncCrypto.constantTimeEquals(expected, provided)) {
+            return Result.failure(DecodeException(DecodeError.SignatureMismatch))
+        }
+
+        return runCatching {
+            val payload = gunzip(base64UrlDecode(seed)).toString(Charsets.UTF_8)
+            val ops = json.decodeFromString(
+                ListSerializer(Operation.serializer()),
+                payload,
+            )
+            require(ops.all { it.eventId == eventId }) {
+                "decoded seed ops carry an eventId different from the URL"
+            }
+            DecodedJoin(eventId = eventId, eventKey = eventKey, ops = ops)
+        }.recoverCatching {
+            throw DecodeException(DecodeError.PayloadInvalid(it))
+        }
+    }
+
+    private fun parseSyncUrl(url: String): Map<String, String>? =
+        parseQuery(url, "$SCHEME://$SYNC_HOST?")
+
+    private fun parseJoinUrl(url: String): Map<String, String>? =
+        parseQuery(url, "$SCHEME://$JOIN_HOST?")
+
+    private fun parseQuery(url: String, prefix: String): Map<String, String>? {
         if (!url.startsWith(prefix)) return null
         val query = url.substring(prefix.length)
         if (query.isEmpty()) return null

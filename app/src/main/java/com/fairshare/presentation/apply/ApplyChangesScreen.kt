@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fairshare.data.sync.SneakernetImporter
 
 /**
  * Confirmation screen reached after tapping a `fairshare://sync` link
@@ -89,6 +90,14 @@ private fun Body(state: ApplyChangesState, onApply: () -> Unit) {
             "Évènement : ${state.eventName ?: state.eventId.orEmpty()}",
             style = MaterialTheme.typography.titleMedium,
         )
+        val kindLabel = when (state.kind) {
+            SneakernetImporter.Kind.JOIN -> "Invitation (la clé de l'évènement est dans le lien)"
+            SneakernetImporter.Kind.SYNC -> "Synchronisation incrémentale"
+            null -> null
+        }
+        kindLabel?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall)
+        }
         Text(
             "${state.opCount} opération${if (state.opCount > 1) "s" else ""} à appliquer.",
             style = MaterialTheme.typography.bodyMedium,

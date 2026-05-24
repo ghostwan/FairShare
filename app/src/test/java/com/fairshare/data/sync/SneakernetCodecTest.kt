@@ -148,4 +148,75 @@ class SneakernetCodecTest {
         }
         assertTrue(threw)
     }
+
+    @Test
+    fun `encodeJoin then decodeJoin round-trips key and ops`() {
+        val ops = sampleOps()
+        val url = SneakernetCodec.encodeJoin(eventId, ops, key)
+        assertTrue(url.startsWith("fairshare://join?"))
+        val decoded = SneakernetCodec.decodeJoin(url).getOrThrow()
+        assertEquals(eventId, decoded.eventId)
+        assertTrue(decoded.eventKey.contentEquals(key))
+        assertEquals(ops, decoded.ops)
+    }
+
+    @Test
+    fun `decodeJoin rejects a tampered seed`() {
+        val url = SneakernetCodec.encodeJoin(eventId, sampleOps(), key)
+        val tampered = url.replace("seed=", "seed=AA")
+        val result = SneakernetCodec.decodeJoin(tampered)
+        assertTrue(result.isFailure)
+        val err = (result.exceptionOrNull() as DecodeException).error
+        assertTrue(err is SneakernetCodec.DecodeError.SignatureMismatch)
+    }
+
+    @Test
+    fun `decodeJoin rejects a tampered embedded key`() {
+        // Swapping the key invalidates the HMAC (mac key is derived
+        // from the event key), so the bundle is rejected before
+        // attempting to deserialize the seed.
+        val url = SneakernetCodec.encodeJoin(eventId, sampleOps(), key)
+        val otherKey = ByteArray(32) { (it + 1).toByte() }
+        val otherEncoded = java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(otherKey)
+        val tampered = url.replace(Regex("key=[^&]+"), "key=$otherEncoded")
+        val result = SneakernetCodec.decodeJoin(tampered)
+        assertTrue(result.isFailure)
+        val err = (result.exceptionOrNull() as DecodeException).error
+        assertTrue(err is SneakernetCodec.DecodeError.SignatureMismatch)
+    }
+
+    @Test
+    fun `decodeJoin rejects a malformed key length`() {
+        val url = SneakernetCodec.encodeJoin(eventId, sampleOps(), key)
+        val shortKey = java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(ByteArray(16))
+        val tampered = url.replace(Regex("key=[^&]+"), "key=$shortKey")
+        val result = SneakernetCodec.decodeJoin(tampered)
+        assertTrue(result.isFailure)
+        val err = (result.exceptionOrNull() as DecodeException).error
+        assertTrue(err is SneakernetCodec.DecodeError.MalformedUrl)
+    }
+
+    @Test
+    fun `decodeJoin rejects a non-join URL`() {
+        val syncUrl = SneakernetCodec.encode(eventId, sampleOps(), key)
+        val result = SneakernetCodec.decodeJoin(syncUrl)
+        assertTrue(result.isFailure)
+        val err = (result.exceptionOrNull() as DecodeException).error
+        assertTrue(err is SneakernetCodec.DecodeError.MalformedUrl)
+    }
+
+    @Test
+    fun `encodeJoin rejects a non-32-byte key`() {
+        var threw = false
+        try {
+            SneakernetCodec.encodeJoin(eventId, sampleOps(), ByteArray(16))
+        } catch (e: IllegalArgumentException) {
+            threw = true
+        }
+        assertTrue(threw)
+    }
 }

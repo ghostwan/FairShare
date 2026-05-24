@@ -16,22 +16,29 @@ import javax.inject.Inject
 /**
  * UI state for the "Share changes" screen.
  *
- * The screen exports the *whole* op log of the current event into a
- * single sneakernet URL on first composition. Once produced, the user
- * can copy it to the clipboard or fire a standard Share Intent
- * (WhatsApp, Signal, mail, …). QR rendering ships in a follow-up
- * commit.
+ * Two link kinds are exposed via a [Mode] toggle (DESIGN.md §6.1):
  *
- * Empty / error states are surfaced verbatim — the user can decide
- * what to do (typically: add data first, or re-create the event so a
- * fresh encryption key is generated).
+ *   - [Mode.SYNC]: a `fairshare://sync` URL carrying the whole op log,
+ *     verified by HMAC against the recipient's existing event key.
+ *     Targets devices that have already joined the event.
+ *
+ *   - [Mode.JOIN]: a `fairshare://join` invitation URL that also
+ *     embeds the 32-byte event encryption key. Targets fresh devices
+ *     that don't know the event yet. Anyone with this URL can read
+ *     and write — treat it like a secret.
+ *
+ * The URL is regenerated whenever the mode changes. Empty op logs are
+ * still valid (the recipient just sees no new ops).
  */
 data class ShareChangesState(
+    val mode: Mode = Mode.SYNC,
     val loading: Boolean = true,
     val url: String? = null,
     val opCount: Int = 0,
     val error: String? = null,
-)
+) {
+    enum class Mode { SYNC, JOIN }
+}
 
 @HiltViewModel
 class ShareChangesViewModel @Inject constructor(
@@ -48,12 +55,24 @@ class ShareChangesViewModel @Inject constructor(
         regenerate()
     }
 
+    fun setMode(mode: ShareChangesState.Mode) {
+        if (_state.value.mode == mode) return
+        _state.value = _state.value.copy(mode = mode)
+        regenerate()
+    }
+
     fun regenerate() {
-        _state.value = ShareChangesState(loading = true)
+        val mode = _state.value.mode
+        _state.value = ShareChangesState(mode = mode, loading = true)
         viewModelScope.launch {
-            exporter.export(eventId)
+            val result = when (mode) {
+                ShareChangesState.Mode.SYNC -> exporter.export(eventId)
+                ShareChangesState.Mode.JOIN -> exporter.exportInvitation(eventId)
+            }
+            result
                 .onSuccess { export ->
                     _state.value = ShareChangesState(
+                        mode = mode,
                         loading = false,
                         url = export.url,
                         opCount = export.opCount,
@@ -68,7 +87,11 @@ class ShareChangesViewModel @Inject constructor(
                                 "en générer une."
                         null -> t.message ?: "Erreur inconnue"
                     }
-                    _state.value = ShareChangesState(loading = false, error = message)
+                    _state.value = ShareChangesState(
+                        mode = mode,
+                        loading = false,
+                        error = message,
+                    )
                 }
         }
     }

@@ -51,27 +51,46 @@ class SneakernetExporter @Inject constructor(
         if (event.encryptionKey.isEmpty()) {
             return Result.failure(ExportException(ExportError.EncryptionKeyMissing))
         }
-
-        val ops: List<Operation> = operationDao.forEvent(eventId)
-            .mapNotNull { entity ->
-                runCatching {
-                    Operation(
-                        opId = entity.opId,
-                        eventId = entity.eventId,
-                        deviceId = entity.deviceId,
-                        lamport = entity.lamport,
-                        wallClockMs = entity.wallClockMs,
-                        payload = json.decodeFromString(
-                            OpPayload.serializer(),
-                            entity.payloadJson,
-                        ),
-                    )
-                }.getOrNull()
-            }
-
+        val ops = loadOps(eventId)
         val url = SneakernetCodec.encode(eventId, ops, event.encryptionKey)
         return Result.success(Export(url = url, opCount = ops.size))
     }
+
+    /**
+     * Builds a `fairshare://join` invitation URL. Carries the event
+     * encryption key plus the whole op log as a seed, so the joining
+     * device reaches parity in a single import (DESIGN.md §6.1).
+     *
+     * The key never reaches the Worker (phase 2) — only sneakernet
+     * invitations carry it, by design.
+     */
+    suspend fun exportInvitation(eventId: String): Result<Export> {
+        val event = eventDao.getById(eventId)
+            ?: return Result.failure(ExportException(ExportError.EventNotFound))
+        if (event.encryptionKey.isEmpty()) {
+            return Result.failure(ExportException(ExportError.EncryptionKeyMissing))
+        }
+        val ops = loadOps(eventId)
+        val url = SneakernetCodec.encodeJoin(eventId, ops, event.encryptionKey)
+        return Result.success(Export(url = url, opCount = ops.size))
+    }
+
+    private suspend fun loadOps(eventId: String): List<Operation> =
+        operationDao.forEvent(eventId).mapNotNull { entity ->
+            runCatching {
+                Operation(
+                    opId = entity.opId,
+                    eventId = entity.eventId,
+                    deviceId = entity.deviceId,
+                    lamport = entity.lamport,
+                    wallClockMs = entity.wallClockMs,
+                    payload = json.decodeFromString(
+                        OpPayload.serializer(),
+                        entity.payloadJson,
+                    ),
+                )
+            }.getOrNull()
+        }
 
     data class Export(val url: String, val opCount: Int)
 }
