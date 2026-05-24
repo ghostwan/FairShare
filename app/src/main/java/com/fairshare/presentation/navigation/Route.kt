@@ -18,9 +18,18 @@ sealed class Route(val path: String) {
     data object ShareChanges : Route("event/{eventId}/share") {
         fun build(eventId: String) = "event/$eventId/share"
     }
+    /**
+     * Receives a `fairshare://sync` link to import. The link is
+     * base64url-encoded into the path so it travels through Compose
+     * Navigation safely (raw URLs contain `?` / `&` / `=`).
+     */
+    data object ApplyChanges : Route("apply/{deepLink}") {
+        fun build(deepLink: String) = "apply/$deepLink"
+    }
 
     companion object {
         const val ARG_EVENT_ID = "eventId"
         const val ARG_EXPENSE_ID = "expenseId"
+        const val ARG_DEEP_LINK = "deepLink"
     }
 }
