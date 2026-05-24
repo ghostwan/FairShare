@@ -76,13 +76,22 @@ class GeminiReceiptParser @Inject constructor(
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
                 Log.w(TAG, "Gemini error ${resp.code}: $body")
-                error("Erreur Gemini ${resp.code} — vérifie la clé API et le modèle")
+                val detail = extractErrorMessage(body) ?: "code HTTP ${resp.code}"
+                error("Gemini a refusé la requête — $detail")
             }
             body
         }
 
         parseResponse(responseBody)
     }
+
+    /** Best-effort extraction of `error.message` from a Gemini error envelope. */
+    private fun extractErrorMessage(body: String): String? = runCatching {
+        json.parseToJsonElement(body)
+            .jsonObject["error"]
+            ?.jsonObject?.get("message")
+            ?.jsonPrimitive?.content
+    }.getOrNull()
 
     private fun buildPayload(base64Image: String): String {
         // Schema: an array of { label: string, quantity: int, priceCents: int }
