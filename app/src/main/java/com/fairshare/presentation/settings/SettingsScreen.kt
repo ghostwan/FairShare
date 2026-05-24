@@ -1,20 +1,26 @@
 package com.fairshare.presentation.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -26,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -41,6 +48,8 @@ fun SettingsScreen(
     val expand by vm.expandQuantities.collectAsState()
     val apiKey by vm.geminiApiKey.collectAsState()
     val model by vm.geminiModel.collectAsState()
+    val cloudUrl by vm.cloudBaseUrl.collectAsState()
+    val syncStatus by vm.syncStatus.collectAsState()
     var showKey by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -119,6 +128,72 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
+
+            Text(
+                "Synchronisation cloud",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, top = 24.dp, end = 16.dp),
+            )
+            Text(
+                "Les ops chiffrées (AES-256-GCM) sont relayées par un Worker Cloudflare. La clé reste sur tes appareils — laisse l'URL par défaut sauf si tu héberges ton propre Worker.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            OutlinedTextField(
+                value = cloudUrl,
+                onValueChange = vm::setCloudBaseUrl,
+                label = { Text("URL du Worker") },
+                singleLine = true,
+                supportingText = { Text("Vide = sync cloud désactivée") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = vm::syncNow, enabled = !syncStatus.isRunning) {
+                    if (syncStatus.isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Synchroniser maintenant")
+                    }
+                }
+                OutlinedButton(
+                    onClick = vm::resetCloudBaseUrl,
+                    enabled = cloudUrl != vm.defaultCloudBaseUrl,
+                ) { Text("Réinitialiser l'URL") }
+            }
+            Text(
+                text = formatSyncStatus(syncStatus),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (syncStatus.lastFailureCount > 0 || syncStatus.lastError != null)
+                    MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
         }
     }
+}
+
+private fun formatSyncStatus(status: CloudSyncStatus): String {
+    if (status.isRunning) return "Synchronisation en cours…"
+    val attempt = status.lastAttemptMs ?: return "Dernière sync : jamais"
+    val ageSeconds = ((System.currentTimeMillis() - attempt) / 1000L).coerceAtLeast(0)
+    val ageLabel = when {
+        ageSeconds < 60 -> "à l'instant"
+        ageSeconds < 3600 -> "il y a ${ageSeconds / 60} min"
+        else -> "il y a ${ageSeconds / 3600} h"
+    }
+    val counts = "${status.lastSuccessCount} OK, ${status.lastFailureCount} échec(s)"
+    val err = status.lastError?.let { " — $it" }.orEmpty()
+    return "Dernière sync : $ageLabel · $counts$err"
 }

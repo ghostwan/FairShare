@@ -25,12 +25,6 @@ class SettingsRepositoryImpl @Inject constructor(
     private val geminiModelKey = stringPreferencesKey("gemini_model")
     private val cloudBaseUrlKey = stringPreferencesKey("cloud_base_url")
 
-    private companion object {
-        // Production Worker deployment. Overridable via the settings
-        // screen for dev/staging environments.
-        const val DEFAULT_CLOUD_BASE_URL = "https://fairshare-sync.ghostwan.workers.dev"
-    }
-
     override val expandQuantities: Flow<Boolean> =
         context.settingsDataStore.data.map { it[expandKey] ?: true }
 
@@ -53,7 +47,7 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override val cloudBaseUrl: Flow<String> =
-        context.settingsDataStore.data.map { it[cloudBaseUrlKey] ?: DEFAULT_CLOUD_BASE_URL }
+        context.settingsDataStore.data.map { it[cloudBaseUrlKey] ?: SettingsRepository.DEFAULT_CLOUD_BASE_URL }
 
     override suspend fun setCloudBaseUrl(value: String) {
         context.settingsDataStore.edit { it[cloudBaseUrlKey] = value.trimEnd('/') }

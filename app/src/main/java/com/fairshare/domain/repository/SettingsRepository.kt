@@ -36,4 +36,8 @@ interface SettingsRepository {
      */
     val cloudBaseUrl: Flow<String>
     suspend fun setCloudBaseUrl(value: String)
+
+    companion object {
+        const val DEFAULT_CLOUD_BASE_URL = "https://fairshare-sync.ghostwan.workers.dev"
+    }
 }
