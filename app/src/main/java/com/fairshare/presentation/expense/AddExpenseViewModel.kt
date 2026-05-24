@@ -30,6 +30,8 @@ data class AddExpenseState(
     val payerId: String? = null,
     val mode: SplitMode = SplitMode.EQUAL,
     val selectedIds: Set<String> = emptySet(),
+    /** Wall-clock date of the expense (millis). User-editable via the date picker. */
+    val dateMillis: Long = System.currentTimeMillis(),
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val isEditMode: Boolean = false,
@@ -67,6 +69,7 @@ class AddExpenseViewModel @Inject constructor(
                             amountText = String.format("%.2f", expense.amountCents / 100.0),
                             payerId = expense.payerId,
                             selectedIds = expense.shares.map { s -> s.participantId }.toSet(),
+                            dateMillis = expense.date,
                             isLoading = false,
                         )
                     }
@@ -81,6 +84,7 @@ class AddExpenseViewModel @Inject constructor(
     fun setAmount(v: String) = _state.update { it.copy(amountText = v) }
     fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
     fun setMode(m: SplitMode) = _state.update { it.copy(mode = m) }
+    fun setDate(millis: Long) = _state.update { it.copy(dateMillis = millis) }
     fun togglePayee(id: String) = _state.update {
         it.copy(selectedIds = if (id in it.selectedIds) it.selectedIds - id else it.selectedIds + id)
     }
@@ -102,7 +106,9 @@ class AddExpenseViewModel @Inject constructor(
                 val expense = Expense(
                     id = editingExpenseId ?: "",
                     eventId = eventId, title = s.title.trim(),
-                    amountCents = amount, payerId = payer, shares = shares,
+                    amountCents = amount, payerId = payer,
+                    date = s.dateMillis,
+                    shares = shares,
                 )
                 if (editingExpenseId != null) expenseRepository.update(expense)
                 else expenseRepository.add(expense)

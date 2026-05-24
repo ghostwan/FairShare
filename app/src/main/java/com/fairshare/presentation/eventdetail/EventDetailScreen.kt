@@ -22,6 +22,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.fairshare.presentation.common.centsToString
+import com.fairshare.presentation.common.toDayHeaderLabel
+import com.fairshare.presentation.common.toStartOfDay
 
 private enum class Tab(val label: String) { Expenses("Dépenses"), Balances("Soldes"), Participants("Personnes") }
 
@@ -139,23 +141,44 @@ private fun ExpensesList(
         return
     }
     val byId = state.participants.associateBy { it.id }
+    // Group by local day (start-of-day epoch) so timeline headers
+    // collapse multiple expenses from the same day under one banner.
+    // Most-recent day first. ExpenseDao already orders by date DESC,
+    // but we re-sort defensively in case the upstream order changes.
+    val groups = remember(state.expenses) {
+        state.expenses
+            .sortedByDescending { it.date }
+            .groupBy { it.date.toStartOfDay() }
+            .toList()
+            .sortedByDescending { it.first }
+    }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(state.expenses, key = { it.id }) { e ->
-            ElevatedCard(onClick = { onClick(e.id) }) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(e.title, style = MaterialTheme.typography.titleMedium)
+        groups.forEach { (dayMillis, dayExpenses) ->
+            item(key = "h-$dayMillis") {
+                Text(
+                    dayMillis.toDayHeaderLabel(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                )
+            }
+            items(dayExpenses, key = { it.id }) { e ->
+                ElevatedCard(onClick = { onClick(e.id) }) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(e.title, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Payé par ${byId[e.payerId]?.name ?: "?"} • ${e.shares.size} participants",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         Text(
-                            "Payé par ${byId[e.payerId]?.name ?: "?"} • ${e.shares.size} participants",
-                            style = MaterialTheme.typography.bodySmall,
+                            e.amountCents.centsToString(currency),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                         )
+                        IconButton(onClick = { onDelete(e.id) }) { Icon(Icons.Default.Delete, null) }
                     }
-                    Text(
-                        e.amountCents.centsToString(currency),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    IconButton(onClick = { onDelete(e.id) }) { Icon(Icons.Default.Delete, null) }
                 }
             }
         }
