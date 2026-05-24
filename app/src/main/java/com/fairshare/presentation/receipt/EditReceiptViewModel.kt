@@ -29,6 +29,8 @@ data class EditReceiptState(
     val title: String = "",
     val payerId: String? = null,
     val items: List<ReceiptItem> = emptyList(),
+    /** Wall-clock date of the receipt expense (millis). */
+    val dateMillis: Long = System.currentTimeMillis(),
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -66,6 +68,7 @@ class EditReceiptViewModel @Inject constructor(
                     title = expense.title,
                     payerId = expense.payerId,
                     items = expense.items.map { ei -> ei.toReceiptItem() },
+                    dateMillis = expense.date,
                     isLoading = false,
                 )
             }
@@ -74,6 +77,7 @@ class EditReceiptViewModel @Inject constructor(
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
+    fun setDate(millis: Long) = _state.update { it.copy(dateMillis = millis) }
 
     fun toggleAssignment(itemId: String, participantId: String) = _state.update { s ->
         s.copy(items = s.items.map {
@@ -128,6 +132,7 @@ class EditReceiptViewModel @Inject constructor(
                         payerId = payer,
                         shares = shares,
                         items = itemDetails,
+                        date = s.dateMillis,
                     )
                 )
                 SyncWorker.enqueueOneShot(context, eventId)

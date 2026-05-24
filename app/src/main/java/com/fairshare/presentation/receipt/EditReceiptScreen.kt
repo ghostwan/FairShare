@@ -1,11 +1,13 @@
 package com.fairshare.presentation.receipt
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fairshare.presentation.common.centsToString
+import com.fairshare.presentation.common.toMediumDateLabel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -26,6 +29,7 @@ fun EditReceiptScreen(
     val state by vm.state.collectAsState()
     val participants by vm.participants.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -65,6 +69,22 @@ fun EditReceiptScreen(
                         value = state.title, onValueChange = vm::setTitle,
                         label = { Text("Titre") }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = state.dateMillis.toMediumDateLabel(),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Date") },
+                        trailingIcon = {
+                            IconButton(onClick = { showDatePicker = true }) {
+                                Icon(Icons.Default.CalendarMonth, contentDescription = "Choisir une date")
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showDatePicker = true },
                     )
                 }
                 item {
@@ -141,5 +161,23 @@ fun EditReceiptScreen(
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Annuler") } },
         )
+    }
+
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = state.dateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let(vm::setDate)
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annuler") }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
     }
 }
