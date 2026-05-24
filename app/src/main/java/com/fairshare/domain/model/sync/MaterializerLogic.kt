@@ -27,6 +27,7 @@ object MaterializerLogic {
         val events = mutableMapOf<String, EventSnapshot>()
         val participants = mutableMapOf<String, ParticipantSnapshot>()
         val expenses = mutableMapOf<String, ExpenseSnapshot>()
+        val categories = mutableMapOf<String, CategorySnapshot>()
 
         ops.filter { it.payload !is OpPayload.EventDelete }
             .groupBy { it.payload.entityKind to it.payload.entityId }
@@ -44,6 +45,11 @@ object MaterializerLogic {
                         is OpPayload.ParticipantDelete -> { /* tombstone */ }
                         else -> error("unexpected payload $p for PARTICIPANT")
                     }
+                    EntityKind.CATEGORY -> when (val p = winner.payload) {
+                        is OpPayload.CategoryUpsert -> categories[id] = p.category
+                        is OpPayload.CategoryDelete -> { /* tombstone */ }
+                        else -> error("unexpected payload $p for CATEGORY")
+                    }
                     EntityKind.EXPENSE -> when (val p = winner.payload) {
                         is OpPayload.ExpenseUpsert -> expenses[id] = p.expense
                         is OpPayload.ExpenseDelete -> { /* tombstone */ }
@@ -52,7 +58,7 @@ object MaterializerLogic {
                 }
             }
 
-        return MaterializedState(events, participants, expenses)
+        return MaterializedState(events, participants, expenses, categories)
     }
 
     /**
@@ -81,6 +87,7 @@ object MaterializerLogic {
             ?: return null
         return when (winner.payload) {
             is OpPayload.ParticipantDelete,
+            is OpPayload.CategoryDelete,
             is OpPayload.ExpenseDelete -> null
             else -> winner.payload
         }

@@ -23,6 +23,15 @@ data class ExpenseEntity(
     val payerId: String,
     val date: Long,
     val isSettlement: Boolean = false,
+    /**
+     * Optional category tag. Either a hardcoded default id (eg.
+     * `default.food`) or a UUID pointing at a `CategoryEntity` row on
+     * the same event. No FK is declared so that default ids stay
+     * referentially valid without seeding the categories table, and
+     * so a custom-category deletion just leaves the expense
+     * uncategorized (we null it out manually in the repository).
+     */
+    val categoryId: String? = null,
 )
 
 @Entity(

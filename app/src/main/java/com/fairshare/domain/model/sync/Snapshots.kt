@@ -60,6 +60,31 @@ data class ExpenseSnapshot(
      * to `false` for wire-format backward compatibility.
      */
     val isSettlement: Boolean = false,
+    /**
+     * Optional category id tagging this expense. Either a
+     * [com.fairshare.domain.model.DefaultCategories] stable id
+     * (eg. `"default.food"`) or a UUID pointing to a custom
+     * `CategorySnapshot` on the same event. Defaulted to `null` for
+     * wire-format backward compatibility — old payloads without this
+     * field decode as uncategorized.
+     */
+    val categoryId: String? = null,
+)
+
+/**
+ * Wire-format snapshot of a [com.fairshare.domain.model.Category].
+ *
+ * Only custom (user-created) categories travel through the sync log;
+ * default categories are hardcoded in [com.fairshare.domain.model.DefaultCategories]
+ * and shared across devices by ID alone.
+ */
+@Serializable
+data class CategorySnapshot(
+    val id: String,
+    val eventId: String,
+    val name: String,
+    val emoji: String,
+    val color: Long,
 )
 
 @Serializable

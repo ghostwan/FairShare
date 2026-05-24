@@ -33,6 +33,17 @@ sealed interface OpPayload {
 
     @Serializable
     data class ExpenseDelete(val expenseId: String) : OpPayload
+
+    /**
+     * Upsert / delete for a user-created custom Category. Default
+     * categories are hardcoded ([com.fairshare.domain.model.DefaultCategories])
+     * and never travel through this log.
+     */
+    @Serializable
+    data class CategoryUpsert(val category: CategorySnapshot) : OpPayload
+
+    @Serializable
+    data class CategoryDelete(val categoryId: String) : OpPayload
 }
 
 /**
@@ -47,13 +58,15 @@ val OpPayload.entityId: String
         is OpPayload.ParticipantDelete -> participantId
         is OpPayload.ExpenseUpsert -> expense.id
         is OpPayload.ExpenseDelete -> expenseId
+        is OpPayload.CategoryUpsert -> category.id
+        is OpPayload.CategoryDelete -> categoryId
     }
 
 /**
  * Entity family this payload belongs to. LWW resolution is performed
  * independently per family per entityId.
  */
-enum class EntityKind { EVENT, PARTICIPANT, EXPENSE }
+enum class EntityKind { EVENT, PARTICIPANT, CATEGORY, EXPENSE }
 
 val OpPayload.entityKind: EntityKind
     get() = when (this) {
@@ -61,6 +74,8 @@ val OpPayload.entityKind: EntityKind
         is OpPayload.EventDelete -> EntityKind.EVENT
         is OpPayload.ParticipantUpsert,
         is OpPayload.ParticipantDelete -> EntityKind.PARTICIPANT
+        is OpPayload.CategoryUpsert,
+        is OpPayload.CategoryDelete -> EntityKind.CATEGORY
         is OpPayload.ExpenseUpsert,
         is OpPayload.ExpenseDelete -> EntityKind.EXPENSE
     }

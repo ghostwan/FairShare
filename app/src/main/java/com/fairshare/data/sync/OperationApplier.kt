@@ -1,9 +1,11 @@
 package com.fairshare.data.sync
 
+import com.fairshare.data.local.dao.CategoryDao
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.dao.ExpenseDao
 import com.fairshare.data.local.dao.OperationDao
 import com.fairshare.data.local.dao.ParticipantDao
+import com.fairshare.data.local.entity.CategoryEntity
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.local.entity.ExpenseEntity
 import com.fairshare.data.local.entity.ExpenseItemEntity
@@ -53,6 +55,7 @@ class OperationApplier @Inject constructor(
     private val operationDao: OperationDao,
     private val eventDao: EventDao,
     private val participantDao: ParticipantDao,
+    private val categoryDao: CategoryDao,
     private val expenseDao: ExpenseDao,
     private val syncIdentityStore: SyncIdentityStore,
 ) {
@@ -113,18 +116,25 @@ class OperationApplier @Inject constructor(
         //    persisted ops may now lose to a newly arrived one with a
         //    higher lamport).
         //
-        //    Order matters: PARTICIPANT and EXPENSE rows carry foreign
-        //    keys to EVENT (and EXPENSE shares/items to PARTICIPANT), so
-        //    a single JOIN batch containing the initial EventUpsert +
-        //    ParticipantUpserts must materialize the event row first or
-        //    Room throws a FOREIGN KEY constraint failure.
+        //    Order matters: PARTICIPANT, CATEGORY and EXPENSE rows
+        //    carry foreign keys to EVENT (and EXPENSE shares/items to
+        //    PARTICIPANT), so a single JOIN batch containing the
+        //    initial EventUpsert + ParticipantUpserts must materialize
+        //    the event row first or Room throws a FOREIGN KEY
+        //    constraint failure. CATEGORY sits between PARTICIPANT and
+        //    EXPENSE so that any expense referencing a freshly-created
+        //    custom category can resolve it; the expense table itself
+        //    does not declare a FK on categoryId (default ids are not
+        //    rows) so the order here is a soft preference, not a hard
+        //    requirement.
         val fullLog = operationDao.forEvent(eventId).mapNotNull { it.toDomainOrNull() }
         val touched = ops.map { it.payload.entityKind to it.payload.entityId }.toSet()
         val ordered = touched.sortedBy { (kind, _) ->
             when (kind) {
                 EntityKind.EVENT -> 0
                 EntityKind.PARTICIPANT -> 1
-                EntityKind.EXPENSE -> 2
+                EntityKind.CATEGORY -> 2
+                EntityKind.EXPENSE -> 3
             }
         }
         for ((kind, id) in ordered) {
@@ -190,6 +200,25 @@ class OperationApplier @Inject constructor(
                 }
             }
 
+            EntityKind.CATEGORY -> {
+                if (winningPayload == null) {
+                    categoryDao.delete(entityId)
+                } else {
+                    val snap = (winningPayload as OpPayload.CategoryUpsert).category
+                    // Same parent-absence guard as PARTICIPANT above.
+                    if (eventDao.getById(snap.eventId) == null) return
+                    categoryDao.insert(
+                        CategoryEntity(
+                            id = snap.id,
+                            eventId = snap.eventId,
+                            name = snap.name,
+                            emoji = snap.emoji,
+                            color = snap.color,
+                        ),
+                    )
+                }
+            }
+
             EntityKind.EXPENSE -> {
                 if (winningPayload == null) {
                     expenseDao.delete(entityId)
@@ -205,6 +234,7 @@ class OperationApplier @Inject constructor(
                         payerId = snap.payerId,
                         date = snap.date,
                         isSettlement = snap.isSettlement,
+                        categoryId = snap.categoryId,
                     )
                     val shareEntities = snap.shares.map {
                         ExpenseShareEntity(

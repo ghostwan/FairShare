@@ -2,11 +2,13 @@ package com.fairshare.di
 
 import com.fairshare.data.ocr.GeminiReceiptParser
 import com.fairshare.data.ocr.MlKitReceiptParser
+import com.fairshare.data.repository.CategoryRepositoryImpl
 import com.fairshare.data.repository.EventRepositoryImpl
 import com.fairshare.data.repository.ExpenseRepositoryImpl
 import com.fairshare.data.repository.ParticipantRepositoryImpl
 import com.fairshare.data.repository.SettingsRepositoryImpl
 import com.fairshare.data.sync.WorkerCloudTransport
+import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.CloudTransport
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ExpenseRepository
@@ -31,6 +33,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindParticipantRepository(impl: ParticipantRepositoryImpl): ParticipantRepository
+
+    @Binds @Singleton
+    abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
 
     @Binds @Singleton
     abstract fun bindExpenseRepository(impl: ExpenseRepositoryImpl): ExpenseRepository

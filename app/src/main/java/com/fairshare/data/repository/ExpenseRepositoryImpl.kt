@@ -71,6 +71,7 @@ class ExpenseRepositoryImpl @Inject constructor(
             shares = expense.shares.map { it.toSnapshot() },
             items = itemsWithIds.map { it.toSnapshot() },
             isSettlement = expense.isSettlement,
+            categoryId = expense.categoryId,
         )
         applier.applyLocal(
             eventId = expense.eventId,
@@ -100,6 +101,7 @@ private fun ExpenseWithDetails.toDomain(): Expense {
         shares = shares.map { ExpenseShare(it.participantId, it.amountCents) },
         items = sortedItems,
         isSettlement = expense.isSettlement,
+        categoryId = expense.categoryId,
     )
 }
 

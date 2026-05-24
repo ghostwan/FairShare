@@ -261,4 +261,63 @@ class MaterializerLogicTest {
         assertTrue(winner is OpPayload.EventUpsert)
         assertEquals("Trip", (winner as OpPayload.EventUpsert).event.name)
     }
+
+    private fun categoryUpsert(
+        id: String,
+        name: String,
+        device: String,
+        lamport: Long,
+        emoji: String = "🍕",
+        color: Long = 0xFFEF6C00L,
+    ): Operation = op(
+        opId = "op-cat-$id-$device-$lamport",
+        deviceId = device,
+        lamport = lamport,
+        payload = OpPayload.CategoryUpsert(
+            CategorySnapshot(
+                id = id,
+                eventId = eventId,
+                name = name,
+                emoji = emoji,
+                color = color,
+            ),
+        ),
+    )
+
+    private fun categoryDelete(id: String, device: String, lamport: Long): Operation = op(
+        opId = "op-cat-del-$id-$device-$lamport",
+        deviceId = device,
+        lamport = lamport,
+        payload = OpPayload.CategoryDelete(categoryId = id),
+    )
+
+    @Test
+    fun `category LWW - higher lamport upsert wins`() {
+        val low = categoryUpsert("c1", "Food", "dA", 1)
+        val high = categoryUpsert("c1", "Groceries", "dB", 5)
+        val state = MaterializerLogic.resolve(listOf(low, high))
+        assertEquals("Groceries", state.categories["c1"]?.name)
+    }
+
+    @Test
+    fun `category delete tombstones an earlier upsert`() {
+        val ops = listOf(
+            categoryUpsert("c1", "Food", "dA", 1),
+            categoryDelete("c1", "dA", 2),
+        )
+        val state = MaterializerLogic.resolve(ops)
+        assertNull(state.categories["c1"])
+        assertNull(MaterializerLogic.resolveEntity(EntityKind.CATEGORY, "c1", ops))
+    }
+
+    @Test
+    fun `category and expense are resolved independently`() {
+        val ops = listOf(
+            categoryUpsert("c1", "Food", "dA", 1),
+            expenseUpsert("e1", "Pizza", 1000, "p1", "dA", 2),
+        )
+        val state = MaterializerLogic.resolve(ops)
+        assertNotNull(state.categories["c1"])
+        assertNotNull(state.expenses["e1"])
+    }
 }

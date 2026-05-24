@@ -2,10 +2,12 @@ package com.fairshare.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.fairshare.data.local.dao.CategoryDao
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.dao.ExpenseDao
 import com.fairshare.data.local.dao.OperationDao
 import com.fairshare.data.local.dao.ParticipantDao
+import com.fairshare.data.local.entity.CategoryEntity
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.local.entity.ExpenseEntity
 import com.fairshare.data.local.entity.ExpenseItemAssignmentEntity
@@ -18,18 +20,20 @@ import com.fairshare.data.local.entity.ParticipantEntity
     entities = [
         EventEntity::class,
         ParticipantEntity::class,
+        CategoryEntity::class,
         ExpenseEntity::class,
         ExpenseShareEntity::class,
         ExpenseItemEntity::class,
         ExpenseItemAssignmentEntity::class,
         OperationEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class FairShareDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
     abstract fun participantDao(): ParticipantDao
+    abstract fun categoryDao(): CategoryDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun operationDao(): OperationDao
 }

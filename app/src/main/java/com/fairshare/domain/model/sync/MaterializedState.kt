@@ -17,4 +17,5 @@ data class MaterializedState(
     val events: Map<String, EventSnapshot> = emptyMap(),
     val participants: Map<String, ParticipantSnapshot> = emptyMap(),
     val expenses: Map<String, ExpenseSnapshot> = emptyMap(),
+    val categories: Map<String, CategorySnapshot> = emptyMap(),
 )

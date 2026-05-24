@@ -25,6 +25,13 @@ data class Expense(
      * as system-generated for history purposes.
      */
     val isSettlement: Boolean = false,
+    /**
+     * Optional category tag. Either a [DefaultCategories] id (eg.
+     * `"default.food"`) or a UUID pointing to a custom Category stored
+     * on this event. `null` means "uncategorized". Travels through the
+     * standard ExpenseUpsert snapshot LWW pipeline.
+     */
+    val categoryId: String? = null,
 )
 
 data class ExpenseShare(
