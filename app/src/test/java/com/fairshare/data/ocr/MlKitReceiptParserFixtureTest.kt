@@ -296,4 +296,99 @@ class MlKitReceiptParserFixtureTest {
         val totalLeaked = items.firstOrNull { it.priceCents == 13600L }
         assertEquals("Grand total leaked: ${totalLeaked?.label}", null, totalLeaked)
     }
+
+    /**
+     * Bug 04 — "À L'Aise Breizh Dinan". Each item spans THREE visual lines:
+     *   line 1 :        CHAUSSETTES POIZ.                          (label part 1)
+     *   line 2 :  1     METEO MARINE 41/45         12.00 €         (label part 2 + price)
+     *   line 3 :        CHAUSSE22POIZ 12.00 €                      (SKU code + dup price)
+     *
+     * The intra-item vertical gap (~ 90 px) is bigger than the row-clustering
+     * tolerance (medianHeight × 0.6 ≈ 48), so each line becomes its own row.
+     * The right-column price ends up attached to line 2 only, while line 1
+     * ("CHAUSSETTES POIZ") and line 3 ("CHAUSSE22POIZ") become orphan
+     * label-only rows. Pre-fix result: only "METEO MARINE 41/45" appears,
+     * other items become "TU", "WHITEL €", and the 25 € item is lost entirely.
+     *
+     * Fix: post-pass [mergeMultiLineLabels] that, for each price row, sucks up
+     * the adjacent label-only rows above (within medianHeight × 1.5) into the
+     * label, and drops adjacent SKU-like rows (single alphanumeric token) below.
+     * Plus label tokens sorted by (cy, cx) instead of just cx, and standalone
+     * currency-symbol tokens filtered out of labels.
+     */
+    @Test
+    fun `bug-04 multiline with sku — 3-line items reassembled into 4 clean items`() {
+        val tokens = loadFixture("bug-04-multiline-with-sku.log")
+        val items = extractItems(tokens)
+
+        // 4 items expected. We allow ≥ 4 because a stray SKU row might survive
+        // as an extra noisy item — those are caught by the price-sum assertion.
+        assertTrue(
+            "Expected ≥ 4 items, got ${items.size}: ${items.map { "${it.label}=${it.priceCents}" }}",
+            items.size >= 4,
+        )
+
+        // Sum of all line-totals must equal the printed grand total (89 €).
+        val total = items.sumOf { it.priceCents }
+        assertEquals(
+            "Sum of item line-totals should be 89,00 €, got ${items.map { it.priceCents }}",
+            8900L,
+            total,
+        )
+
+        // The 4 expected prices, each exactly once.
+        listOf(1200L, 2300L, 2900L, 2500L).forEach { expected ->
+            val matching = items.filter { it.priceCents == expected }
+            assertEquals(
+                "Expected exactly one item @ $expected cents, got ${matching.size}: ${matching.map { it.label }}",
+                1,
+                matching.size,
+            )
+        }
+
+        // No label should be a bare currency symbol residue ("€", "WHITEL €", "TU €").
+        val brokenCurrency = items.firstOrNull {
+            it.label.trim().let { l -> l == "€" || l.endsWith(" €") }
+        }
+        assertEquals(
+            "Label still contains a trailing currency symbol: '${brokenCurrency?.label}'",
+            null,
+            brokenCurrency,
+        )
+
+        // No label should be just a short fragment like "TU" — the merge should
+        // have prepended the line above ("FOULARD JANNY MARINE").
+        items.forEach { item ->
+            assertTrue(
+                "Label '${item.label}' is suspiciously short for a real item",
+                item.label.length >= 6,
+            )
+        }
+
+        // Specific item checks: the merged labels must contain the expected words.
+        val chaussettes = items.firstOrNull { it.priceCents == 1200L }
+        assertNotNull(chaussettes)
+        assertTrue(
+            "12 € item should mention CHAUSSETTES: '${chaussettes!!.label}'",
+            chaussettes.label.contains("CHAUSSETTES", ignoreCase = true),
+        )
+
+        val foulard = items.firstOrNull { it.priceCents == 2300L }
+        assertNotNull(foulard)
+        assertTrue(
+            "23 € item should mention FOULARD: '${foulard!!.label}'",
+            foulard.label.contains("FOULARD", ignoreCase = true),
+        )
+
+        val casquette = items.firstOrNull { it.priceCents == 2500L }
+        assertNotNull("CASQUETTE item (25 €) must not be lost", casquette)
+        assertTrue(
+            "25 € item should mention CASQUETTE: '${casquette!!.label}'",
+            casquette.label.contains("CASQUETTE", ignoreCase = true),
+        )
+
+        // Grand total (89,00 €) must not appear as an item.
+        val totalLeaked = items.count { it.priceCents == 8900L }
+        assertEquals("Grand total leaked as item", 0, totalLeaked)
+    }
 }
