@@ -224,4 +224,76 @@ class MlKitReceiptParserFixtureTest {
         val totalLeaked = items.firstOrNull { it.priceCents == 5630L }
         assertEquals("TOTAL line leaked as an item: ${totalLeaked?.label}", null, totalLeaked)
     }
+
+    /**
+     * Bug 03 — "Côte Rivière" (Pont-Aven). Multi-line layout: each item spans
+     * TWO rows. The label sits on the top row with the line total on its right;
+     * the unit price sits alone on the row below the label. Both prices form
+     * proper vertical columns (8 vs 8) so the symmetric/asymmetric size
+     * heuristic from bug-02 would keep the wrong (left) column and lose every
+     * item.
+     *
+     * Fix: the new "label alignment" stage in dropDuplicatePriceColumns scores
+     * each cluster by the fraction of prices whose cy is within a row tolerance
+     * of a non-price token. The right column scores 1.0 (every total is on a
+     * label row), the left column scores 0.0 (unit prices live on their own
+     * orphan rows). The right column wins.
+     */
+    @Test
+    fun `bug-03 cote riviere — multi-line items keep the label-aligned column`() {
+        val tokens = loadFixture("bug-03-multiline-cote-riviere.log")
+        val items = extractItems(tokens)
+
+        // The receipt has 8 distinct item lines.
+        assertTrue(
+            "Expected ≥ 7 items, got ${items.size}: ${items.map { "${it.label}=${it.priceCents}×${it.quantity}" }}",
+            items.size >= 7,
+        )
+
+        // Sum of all detected item line-totals must equal the printed grand total.
+        // 8 + 8 + 14 + 18 + 52 + 16 + 12 + 8 = 136,00
+        val total = items.sumOf { it.priceCents }
+        assertEquals(
+            "Sum of item line-totals should be 136,00 €",
+            13600L,
+            total,
+        )
+
+        // Multi-quantity lines must keep their quantity (extracted via QTY_BARE
+        // since there is no 'x' separator on this ticket).
+        val kir = items.firstOrNull { it.label.contains("Kir", ignoreCase = true) }
+        assertNotNull("Missing 'Kir vin blanc' line", kir)
+        assertEquals(2, kir!!.quantity)
+        assertEquals(800L, kir.priceCents)
+
+        val rillettes = items.firstOrNull { it.label.contains("Rillettes", ignoreCase = true) }
+        assertNotNull("Missing 'Rillettes de poisson' line", rillettes)
+        assertEquals(2, rillettes!!.quantity)
+        assertEquals(1800L, rillettes.priceCents)
+
+        val platsDuJour = items.filter { it.label.contains("plat du jour", ignoreCase = true) }
+        assertEquals("Expected two distinct 'plat du jour' lines", 2, platsDuJour.size)
+        // The 4× plat at 52 € and the 1× plat at 16 € must coexist.
+        val plat4 = platsDuJour.firstOrNull { it.quantity == 4 }
+        val plat1 = platsDuJour.firstOrNull { it.quantity == 1 }
+        assertNotNull("Missing '4 plat du jour' line", plat4)
+        assertNotNull("Missing '1 plat du jour' line", plat1)
+        assertEquals(5200L, plat4!!.priceCents)
+        assertEquals(1600L, plat1!!.priceCents)
+
+        // The standalone unit-price rows ("4,00 €", "13,00 €", …) must NOT
+        // appear as orphan items with just a "€" label or similar garbage.
+        val orphanEuro = items.firstOrNull {
+            it.label.trim().let { l -> l == "€" || l == "e" || l.length < 2 }
+        }
+        assertEquals(
+            "Orphan unit-price row leaked as an item: '${orphanEuro?.label}'",
+            null,
+            orphanEuro,
+        )
+
+        // Grand total row "Total … 136,00" must not appear as an item.
+        val totalLeaked = items.firstOrNull { it.priceCents == 13600L }
+        assertEquals("Grand total leaked: ${totalLeaked?.label}", null, totalLeaked)
+    }
 }

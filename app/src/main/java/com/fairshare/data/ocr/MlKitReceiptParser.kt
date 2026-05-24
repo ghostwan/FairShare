@@ -158,32 +158,41 @@ class MlKitReceiptParser @Inject constructor(
         }
 
         /**
-         * Some receipts print two aligned price columns. We've observed two
+         * Some receipts print two aligned price columns. We've observed three
          * very different shapes in the wild:
          *
          *  - **Symmetric** (bug-01, "La Perrozienne"): both `EUR/U` (unit price)
          *    and `EUR` (line total) print on *every* item line. Two full columns
-         *    of equal length. The right column's cy is slightly mis-aligned with
-         *    the labels (~60 px diff vs ~40 px for the left), which used to
-         *    bridge consecutive rows. We must drop one of the two columns —
-         *    the left one is the safe choice (better label alignment, and
-         *    [ExpandReceiptQuantitiesUseCase] re-multiplies later).
+         *    of equal length, each row aligned with its label. We must drop one
+         *    of the two columns — the left one is the safe choice (better label
+         *    alignment, and [ExpandReceiptQuantitiesUseCase] re-multiplies
+         *    later).
          *
          *  - **Asymmetric** (bug-02, "Crêperie de la Poste"): the unit-price
          *    column only prints for lines with qty > 1, so it is sparse (2–3
          *    prices). The right column carries every line total. Here we MUST
          *    keep the right (bigger) column, otherwise we lose every qty=1
-         *    item — which is what happened with the previous "always drop the
-         *    right column" rule.
+         *    item.
          *
-         * Heuristic:
+         *  - **Multi-line** (bug-03, "Côte Rivière"): one column lives on the
+         *    *same* row as the label (line total on the right) while the other
+         *    column lives on a *separate* row below the label (unit price under
+         *    the label). If we kept the orphan column, every row would lose
+         *    its price; we MUST keep the column that aligns with the labels.
+         *
+         * Heuristic (applied in order):
          *  1. Cluster clean price tokens by cx using a "wide gap" splitter
          *     (gap ≥ 2 × median token height starts a new cluster).
-         *  2. If clusters are roughly the same size (ratio ≥ 0.5) → treat as
-         *     symmetric duplicate columns and keep the LEFT-most one.
-         *  3. Otherwise → treat smaller clusters as auxiliary noise (sparse
-         *     unit prices, lone footer prices like "PAR COUVERT 19,75", …)
-         *     and keep only the BIGGEST cluster.
+         *  2. Drop outlier singleton clusters (size ≤ 2 and < 25 % of the
+         *     biggest cluster). These are stray prices like a lone
+         *     "PAR COUVERT : 19,75" footer.
+         *  3. **Label alignment**: for each remaining cluster, compute the
+         *     fraction of its prices whose cy is within the row tolerance of
+         *     a non-price token's cy. If clusters differ sharply (best –
+         *     worst ≥ 0.5) keep the best-aligned cluster. This covers bug-03.
+         *  4. Otherwise (all clusters align with labels) → size-based:
+         *     - symmetric (ratio ≥ 0.5) → keep LEFT-most cluster (bug-01)
+         *     - asymmetric → keep BIGGEST cluster (bug-02)
          */
         internal fun dropDuplicatePriceColumns(tokens: List<Token>): List<Token> {
             val priceTokens = tokens.filter { PRICE_REGEX.matches(it.text.trim()) }
@@ -202,12 +211,7 @@ class MlKitReceiptParser @Inject constructor(
             }
             if (clusters.size < 2) return tokens
 
-            // 2. Drop "outlier" clusters — single stray prices like the
-            //    "PAR COUVERT : 19,75" footer that sit in their own column.
-            //    A cluster is an outlier if it has < 25 % the count of the
-            //    biggest cluster (and at most 2 prices). This keeps real
-            //    columns intact while removing isolated noise that would
-            //    otherwise warp the symmetric/asymmetric decision below.
+            // 2. Drop outlier singleton clusters (lone footer prices, …).
             val biggestRaw = clusters.maxOf { it.size }
             val outlierCutoff = (biggestRaw * 0.25).coerceAtLeast(1.0)
             val outlierTokens: Set<Token> = clusters
@@ -219,7 +223,57 @@ class MlKitReceiptParser @Inject constructor(
                 return tokens.filterNot { it in outlierTokens }
             }
 
-            // 3. Decide which of the remaining clusters to keep.
+            // 3. Label-alignment score: prefer the cluster whose prices live on
+            //    the same rows as actual labels. This catches receipts where a
+            //    column sits on its own (orphan) rows whose only neighbour is
+            //    a "€" symbol token (bug-03).
+            val rowTolerance = (medianHeight * 0.6).toInt().coerceAtLeast(6)
+            // Build label-row cy anchors from non-price tokens. A row counts as
+            // a "label row" only if it contains at least one token of length ≥ 2
+            // with at least one letter (filters out lone "€" / "*" / digits).
+            val nonPriceSorted = tokens
+                .filterNot { PRICE_REGEX.matches(it.text.trim()) }
+                .sortedBy { it.cy }
+            val labelRowCys = mutableListOf<Int>()
+            var anchor = Int.MIN_VALUE
+            val pendingRow = mutableListOf<Token>()
+            fun commit() {
+                val isLabel = pendingRow.any { t ->
+                    val txt = t.text.trim()
+                    txt.length >= 2 && txt.any { it.isLetter() }
+                }
+                if (isLabel) labelRowCys += anchor
+                pendingRow.clear()
+            }
+            for (t in nonPriceSorted) {
+                if (anchor == Int.MIN_VALUE || abs(t.cy - anchor) > rowTolerance) {
+                    commit()
+                    anchor = t.cy
+                }
+                pendingRow += t
+            }
+            commit()
+
+            fun alignmentRatio(cluster: List<Token>): Double {
+                if (cluster.isEmpty()) return 0.0
+                val aligned = cluster.count { p ->
+                    labelRowCys.any { abs(p.cy - it) <= rowTolerance }
+                }
+                return aligned.toDouble() / cluster.size
+            }
+            val ratios = significant.map { alignmentRatio(it) }
+            val bestRatio = ratios.max()
+            val worstRatio = ratios.min()
+            if (bestRatio - worstRatio >= 0.5) {
+                val bestIdx = ratios.indexOfFirst { it == bestRatio }
+                val dropped: Set<Token> = significant
+                    .filterIndexed { i, _ -> i != bestIdx }
+                    .flatten()
+                    .toSet() + outlierTokens
+                return tokens.filterNot { it in dropped }
+            }
+
+            // 4. Size-based decision among label-aligned clusters.
             val biggest = significant.maxOf { it.size }
             val smallest = significant.minOf { it.size }
             val symmetric = smallest * 2 >= biggest
