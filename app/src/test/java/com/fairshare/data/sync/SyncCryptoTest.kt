@@ -77,4 +77,91 @@ class SyncCryptoTest {
         assertFalse(SyncCrypto.constantTimeEquals(a, b))
         assertFalse(SyncCrypto.constantTimeEquals(a, ByteArray(31)))
     }
+
+    // ---------- AES-256-GCM ----------
+
+    @Test
+    fun `aesGcm round-trip recovers plaintext`() {
+        val key = ByteArray(32) { (it * 7 + 3).toByte() }
+        val nonce = ByteArray(SyncCrypto.GCM_NONCE_LEN) { (it * 5).toByte() }
+        val plaintext = "fairshare-op-payload".toByteArray()
+        val ct = SyncCrypto.aesGcmEncrypt(key, nonce, plaintext)
+        // Ciphertext == plaintext.length + 16-byte tag.
+        assertEquals(plaintext.size + SyncCrypto.GCM_TAG_BITS / 8, ct.size)
+        val pt = SyncCrypto.aesGcmDecrypt(key, nonce, ct)
+        assertArrayEquals(plaintext, pt)
+    }
+
+    @Test(expected = javax.crypto.AEADBadTagException::class)
+    fun `aesGcm rejects tampered ciphertext`() {
+        val key = ByteArray(32) { 1 }
+        val nonce = ByteArray(SyncCrypto.GCM_NONCE_LEN) { 2 }
+        val ct = SyncCrypto.aesGcmEncrypt(key, nonce, "hello".toByteArray())
+        // Flip a bit in the ciphertext body (not the tag).
+        ct[0] = (ct[0].toInt() xor 0x01).toByte()
+        SyncCrypto.aesGcmDecrypt(key, nonce, ct)
+    }
+
+    @Test(expected = javax.crypto.AEADBadTagException::class)
+    fun `aesGcm rejects wrong key`() {
+        val key = ByteArray(32) { 1 }
+        val nonce = ByteArray(SyncCrypto.GCM_NONCE_LEN) { 2 }
+        val ct = SyncCrypto.aesGcmEncrypt(key, nonce, "hello".toByteArray())
+        val wrong = ByteArray(32) { 99 }
+        SyncCrypto.aesGcmDecrypt(wrong, nonce, ct)
+    }
+
+    @Test
+    fun `aesGcm rejects invalid key or nonce size`() {
+        try {
+            SyncCrypto.aesGcmEncrypt(ByteArray(16), ByteArray(12), ByteArray(0))
+            error("expected IllegalArgumentException")
+        } catch (_: IllegalArgumentException) {
+        }
+        try {
+            SyncCrypto.aesGcmEncrypt(ByteArray(32), ByteArray(8), ByteArray(0))
+            error("expected IllegalArgumentException")
+        } catch (_: IllegalArgumentException) {
+        }
+    }
+
+    // ---------- Sub-key derivation + Worker bearer ----------
+
+    @Test
+    fun `sub-key derivation produces distinct 32-byte keys`() {
+        val eventKey = ByteArray(32) { it.toByte() }
+        val mac = SyncCrypto.deriveSneakernetMacKey(eventKey)
+        val auth = SyncCrypto.deriveWorkerAuthKey(eventKey)
+        val cipher = SyncCrypto.deriveCloudCipherKey(eventKey)
+        assertEquals(32, mac.size)
+        assertEquals(32, auth.size)
+        assertEquals(32, cipher.size)
+        assertFalse(mac.contentEquals(auth))
+        assertFalse(mac.contentEquals(cipher))
+        assertFalse(auth.contentEquals(cipher))
+    }
+
+    @Test
+    fun `computeWorkerBearer is 64 lowercase hex chars and deterministic`() {
+        val eventKey = ByteArray(32) { (it + 1).toByte() }
+        val a = SyncCrypto.computeWorkerBearer(eventKey, "evt-1")
+        val b = SyncCrypto.computeWorkerBearer(eventKey, "evt-1")
+        assertEquals(a, b)
+        assertEquals(64, a.length)
+        assertTrue(a.all { it in '0'..'9' || it in 'a'..'f' })
+    }
+
+    @Test
+    fun `computeWorkerBearer differs per event and per key`() {
+        val k1 = ByteArray(32) { 1 }
+        val k2 = ByteArray(32) { 2 }
+        assertNotEquals(
+            SyncCrypto.computeWorkerBearer(k1, "evt-1"),
+            SyncCrypto.computeWorkerBearer(k1, "evt-2"),
+        )
+        assertNotEquals(
+            SyncCrypto.computeWorkerBearer(k1, "evt-1"),
+            SyncCrypto.computeWorkerBearer(k2, "evt-1"),
+        )
+    }
 }

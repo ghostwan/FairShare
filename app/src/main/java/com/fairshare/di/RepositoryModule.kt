@@ -6,6 +6,8 @@ import com.fairshare.data.repository.EventRepositoryImpl
 import com.fairshare.data.repository.ExpenseRepositoryImpl
 import com.fairshare.data.repository.ParticipantRepositoryImpl
 import com.fairshare.data.repository.SettingsRepositoryImpl
+import com.fairshare.data.sync.WorkerCloudTransport
+import com.fairshare.domain.repository.CloudTransport
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
@@ -41,6 +43,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
+
+    @Binds @Singleton
+    abstract fun bindCloudTransport(impl: WorkerCloudTransport): CloudTransport
 }
 
 @Module

@@ -147,7 +147,7 @@ internal object SneakernetCodec {
     }
 
     private fun macKey(eventKey: ByteArray): ByteArray =
-        SyncCrypto.hkdfSha256(eventKey, MAC_INFO.toByteArray(Charsets.US_ASCII))
+        SyncCrypto.deriveSneakernetMacKey(eventKey)
 
     /**
      * Builds a `fairshare://join` invitation URL. Unlike [encode],

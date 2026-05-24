@@ -93,4 +93,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -36,6 +36,17 @@ interface OperationDao {
     @Query("SELECT MAX(lamport) FROM operations WHERE event_id = :eventId")
     suspend fun maxLamport(eventId: String): Long?
 
+    /**
+     * Maximum lamport observed for `eventId` among ops with [origin]
+     * (an [com.fairshare.domain.model.sync.OpOrigin] name). Used by
+     * [com.fairshare.data.sync.WorkerCloudTransport] as the implicit
+     * pull cursor: passing `since = maxLamportByOrigin(eventId, "CLOUD")`
+     * to the Worker fetches every op the cloud has that we haven't seen
+     * yet, with no extra cursor state to keep in sync.
+     */
+    @Query("SELECT MAX(lamport) FROM operations WHERE event_id = :eventId AND origin = :origin")
+    suspend fun maxLamportByOrigin(eventId: String, origin: String): Long?
+
     @Query("SELECT COUNT(*) FROM operations WHERE event_id = :eventId")
     fun observeCount(eventId: String): Flow<Int>
 

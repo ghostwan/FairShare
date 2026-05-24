@@ -28,4 +28,12 @@ interface SettingsRepository {
      */
     val geminiModel: Flow<String>
     suspend fun setGeminiModel(value: String)
+
+    /**
+     * Base URL of the Cloudflare sync Worker (no trailing slash). Empty
+     * string disables the cloud transport. Defaults to the production
+     * deployment at `https://fairshare-sync.ghostwan.workers.dev`.
+     */
+    val cloudBaseUrl: Flow<String>
+    suspend fun setCloudBaseUrl(value: String)
 }
