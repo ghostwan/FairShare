@@ -139,11 +139,13 @@ private fun Content(
         val helper = when (mode) {
             ShareChangesState.Mode.SYNC ->
                 "Pour un appareil qui a déjà rejoint l'évènement. " +
-                    "$opCount opération${if (opCount > 1) "s" else ""}."
+                    "$opCount opération${if (opCount > 1) "s" else ""} — " +
+                    "${url.length} caractères."
             ShareChangesState.Mode.JOIN ->
                 "Invitation à rejoindre. Le lien contient la clé : ne le partage " +
                     "qu'avec des personnes de confiance. " +
-                    "$opCount opération${if (opCount > 1) "s" else ""} dans la seed."
+                    "$opCount opération${if (opCount > 1) "s" else ""} dans la seed — " +
+                    "${url.length} caractères."
         }
         Text(helper, style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(
