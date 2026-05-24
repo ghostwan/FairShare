@@ -1,4 +1,4 @@
-package com.fairshare.presentation.share
+package com.fairshare.presentation.invite
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -10,10 +10,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,9 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -51,23 +47,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.fairshare.data.sync.QrCodeGenerator
 
 /**
- * Minimal UI for the sneakernet "Share changes" flow (DESIGN.md §6.1).
+ * Minimal UI for the invitation export flow.
  *
- * Once the ViewModel has produced the bundle URL, the user can:
+ * Once the ViewModel has produced the invitation URL, the user can:
  *
- *   - read the raw URL in a read-only OutlinedTextField,
- *   - copy it to the clipboard,
+ *   - scan the rendered QR code from another device,
+ *   - copy the raw URL to the clipboard,
  *   - fire a system Share Intent (WhatsApp, Signal, mail, …).
- *
- * QR rendering will be added in a follow-up commit (ZXing core
- * dependency + Canvas drawer). Same for the "Apply changes" landing
- * UI that consumes the URLs on the receiving device.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShareChangesScreen(
+fun InviteScreen(
     onBack: () -> Unit,
-    vm: ShareChangesViewModel = hiltViewModel(),
+    vm: InviteViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
@@ -80,7 +72,7 @@ fun ShareChangesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Partager les changements") },
+                title = { Text("Inviter") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -99,8 +91,6 @@ fun ShareChangesScreen(
             when {
                 state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.url != null -> Content(
-                    mode = state.mode,
-                    onModeChange = vm::setMode,
                     url = state.url!!,
                     opCount = state.opCount,
                     onCopy = { copyToClipboard(context, state.url!!) },
@@ -117,8 +107,6 @@ fun ShareChangesScreen(
 
 @Composable
 private fun Content(
-    mode: ShareChangesState.Mode,
-    onModeChange: (ShareChangesState.Mode) -> Unit,
     url: String,
     opCount: Int,
     onCopy: () -> Unit,
@@ -131,36 +119,19 @@ private fun Content(
             .padding(PaddingValues(horizontal = 16.dp, vertical = 16.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxSize()) {
-            val modes = ShareChangesState.Mode.entries
-            modes.forEachIndexed { index, m ->
-                SegmentedButton(
-                    selected = mode == m,
-                    onClick = { onModeChange(m) },
-                    shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                ) {
-                    Text(if (m == ShareChangesState.Mode.SYNC) "Sync" else "Invitation")
-                }
-            }
-        }
-        val helper = when (mode) {
-            ShareChangesState.Mode.SYNC ->
-                "Pour un appareil qui a déjà rejoint l'évènement. " +
-                    "$opCount opération${if (opCount > 1) "s" else ""} — " +
-                    "${url.length} caractères."
-            ShareChangesState.Mode.JOIN ->
-                "Invitation à rejoindre. Le lien contient la clé : ne le partage " +
-                    "qu'avec des personnes de confiance. " +
-                    "$opCount opération${if (opCount > 1) "s" else ""} dans la seed — " +
-                    "${url.length} caractères."
-        }
-        Text(helper, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Le lien contient la clé de chiffrement : ne le partage " +
+                "qu'avec des personnes de confiance. " +
+                "$opCount opération${if (opCount > 1) "s" else ""} dans la seed — " +
+                "${url.length} caractères.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
         QrCodeBlock(content = url)
         OutlinedTextField(
             value = url,
             onValueChange = {},
             readOnly = true,
-            label = { Text(if (mode == ShareChangesState.Mode.SYNC) "Lien fairshare://sync" else "Lien fairshare://join") },
+            label = { Text("Lien fairshare://join") },
             modifier = Modifier.fillMaxSize(),
             maxLines = 8,
         )
@@ -207,7 +178,7 @@ private fun QrCodeBlock(content: String) {
 
 private fun copyToClipboard(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("FairShare sync", text))
+    cm.setPrimaryClip(ClipData.newPlainText("FairShare invitation", text))
 }
 
 private fun shareText(context: Context, text: String) {

@@ -45,7 +45,7 @@ import javax.inject.Singleton
  * thin orchestrator over Room DAOs.
  *
  * Locally-emitted ops also flow through this class so that the
- * materialization path is identical for LOCAL / SNEAKERNET / CLOUD ops
+ * materialization path is identical for LOCAL / CLOUD ops
  * — there is only one code path that turns ops into UI-visible state.
  */
 @Singleton

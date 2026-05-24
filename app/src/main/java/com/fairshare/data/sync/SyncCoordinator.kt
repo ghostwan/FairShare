@@ -29,12 +29,12 @@ import javax.inject.Singleton
  *      also catches the local Lamport clock up.
  *
  *   2. **Push**: re-emit every local op the cloud hasn't acknowledged
- *      yet — i.e. ops with `lamport > pushCursor` and origin in
- *      `{LOCAL, SNEAKERNET}`. We deliberately re-push SNEAKERNET ops
- *      so a device that received changes only via QR/share intent
- *      still propagates them to other cloud peers. The push cursor is
- *      stored in [CloudCursorStore] and advanced monotonically after
- *      a successful push response.
+ *      yet — i.e. ops with `lamport > pushCursor` and origin `LOCAL`.
+ *      Invitation-imported ops are also tagged LOCAL on the joining
+ *      device so they propagate to the Worker on the next push; the
+ *      Worker dedupes by opId. The push cursor is stored in
+ *      [CloudCursorStore] and advanced monotonically after a successful
+ *      push response.
  *
  * Per-event serialization: a single [Mutex] guards concurrent syncs
  * for the same event so an auto-pull (foreground) and a
@@ -184,11 +184,13 @@ class SyncCoordinator @Inject constructor(
         val cursor = cursorStore.pushCursor(eventId)
         val candidates = operationDao.forEventSince(eventId, cursor)
 
-        // Only forward ops emitted on this device (LOCAL) or received
-        // out-of-band (SNEAKERNET). CLOUD-origin ops already live on
-        // the Worker, re-pushing them would be wasteful.
+        // Only forward ops emitted on this device (LOCAL). CLOUD-origin
+        // ops already live on the Worker, re-pushing them would be
+        // wasteful. Invitation-imported ops are also tagged LOCAL so
+        // they get pushed once on the joining device's next sync; the
+        // Worker dedupes by opId.
         val toPush = candidates
-            .filter { it.origin == OpOrigin.LOCAL.name || it.origin == OpOrigin.SNEAKERNET.name }
+            .filter { it.origin == OpOrigin.LOCAL.name }
             .mapNotNull { entity -> entity.toOperationOrNull()?.let { entity to it } }
 
         val alreadyRegistered = cursorStore.isBearerRegistered(eventId)

@@ -15,11 +15,11 @@ import dagger.hilt.android.AndroidEntryPoint
 /**
  * Single Activity host.
  *
- * Also captures `fairshare://` deep links (manifest intent-filter,
- * DESIGN.md §6.1) and forwards them to the nav graph as a one-shot
- * `deepLink` parameter; the graph navigates to the Apply screen and
- * calls back to clear the slot so the same link cannot be re-consumed
- * by recompositions.
+ * Also captures `fairshare://join` invitation deep links (manifest
+ * intent-filter) and forwards them to the nav graph as a one-shot
+ * `deepLink` parameter; the graph navigates to the JoinEvent screen
+ * and calls back to clear the slot so the same link cannot be
+ * re-consumed by recompositions.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -48,6 +48,6 @@ class MainActivity : ComponentActivity() {
 
     private fun Intent?.extractFairshareLink(): String? {
         val data = this?.dataString ?: return null
-        return data.takeIf { it.startsWith("fairshare://") }
+        return data.takeIf { it.startsWith("fairshare://join?") }
     }
 }

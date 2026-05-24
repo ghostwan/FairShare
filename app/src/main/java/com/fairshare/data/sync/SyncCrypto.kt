@@ -16,11 +16,11 @@ import javax.crypto.spec.SecretKeySpec
  * shared via the invitation URL. From that single secret, derived sub-
  * keys are produced for:
  *
- *   - Sneakernet bundle integrity (`HKDF(key, "fairshare-sneakernet-mac")`)
+ *   - Invitation bundle integrity (`HKDF(key, "fairshare-invitation-mac")`)
  *   - Worker bearer auth          (`HKDF(key, "fairshare-worker-auth")`)
  *   - Cloud ciphertext            (`HKDF(key, "fairshare-cloud-cipher")`)
  *
- * Domain-separating sub-keys this way means a leak of a sneakernet
+ * Domain-separating sub-keys this way means a leak of an invitation
  * HMAC token doesn't reveal anything usable against the Worker, and
  * vice-versa.
  */
@@ -117,12 +117,12 @@ internal object SyncCrypto {
 
     // ---------- Sub-key derivation ----------
 
-    private const val MAC_INFO = "fairshare-sneakernet-mac"
+    private const val MAC_INFO = "fairshare-invitation-mac"
     private const val WORKER_AUTH_INFO = "fairshare-worker-auth"
     private const val CLOUD_CIPHER_INFO = "fairshare-cloud-cipher"
 
-    /** 32-byte HMAC key for sneakernet bundle integrity. */
-    fun deriveSneakernetMacKey(eventKey: ByteArray): ByteArray =
+    /** 32-byte HMAC key for invitation bundle integrity. */
+    fun deriveInvitationMacKey(eventKey: ByteArray): ByteArray =
         hkdfSha256(eventKey, MAC_INFO.toByteArray(Charsets.US_ASCII))
 
     /** 32-byte HMAC key for Worker bearer auth. */

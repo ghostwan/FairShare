@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
  * Materialized state of an [com.fairshare.domain.model.Event].
  *
  * [encryptionKey] is the 32-byte symmetric key bound to the event, used
- * to integrity-stamp sneakernet bundles and (phase 2) to encrypt op
+ * to integrity-stamp invitation bundles and to encrypt op
  * payloads bound for the Cloudflare Worker (DESIGN.md §2.3 / §7).
  *
  * The key never leaves the device except inside an invitation URL. It

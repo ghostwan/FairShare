@@ -7,24 +7,24 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.fairshare.presentation.apply.ApplyChangesScreen
 import com.fairshare.presentation.archived.ArchivedEventsScreen
 import com.fairshare.presentation.eventdetail.EventDetailScreen
 import com.fairshare.presentation.events.EventsScreen
 import com.fairshare.presentation.expense.AddExpenseScreen
 import com.fairshare.presentation.expense.EditExpenseRouter
+import com.fairshare.presentation.invite.InviteScreen
+import com.fairshare.presentation.join.JoinEventScreen
 import com.fairshare.presentation.receipt.ScanReceiptScreen
 import com.fairshare.presentation.scan.ScanInvitationScreen
 import com.fairshare.presentation.settings.SettingsScreen
-import com.fairshare.presentation.share.ShareChangesScreen
 import java.util.Base64
 
 @Composable
 fun FairShareNavGraph(
     /**
      * Deep link captured by [com.fairshare.MainActivity]
-     * (intent-filter on `fairshare://`). When non-null on
-     * recomposition, the graph navigates to [Route.ApplyChanges] and
+     * (intent-filter on `fairshare://join`). When non-null on
+     * recomposition, the graph navigates to [Route.JoinEvent] and
      * notifies the host so the same link isn't re-consumed.
      */
     deepLink: String? = null,
@@ -36,7 +36,7 @@ fun FairShareNavGraph(
         val link = deepLink ?: return@LaunchedEffect
         val encoded = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(link.toByteArray(Charsets.UTF_8))
-        nav.navigate(Route.ApplyChanges.build(encoded))
+        nav.navigate(Route.JoinEvent.build(encoded))
         onDeepLinkConsumed()
     }
 
@@ -66,7 +66,7 @@ fun FairShareNavGraph(
                     nav.navigate(Route.EditExpense.build(eventId, expenseId))
                 },
                 onScanReceipt = { id -> nav.navigate(Route.ScanReceipt.build(id)) },
-                onShareChanges = { id -> nav.navigate(Route.ShareChanges.build(id)) },
+                onInvite = { id -> nav.navigate(Route.Invite.build(id)) },
             )
         }
         composable(
@@ -91,16 +91,23 @@ fun FairShareNavGraph(
             ScanReceiptScreen(onDone = { nav.popBackStack() })
         }
         composable(
-            Route.ShareChanges.path,
+            Route.Invite.path,
             arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
         ) {
-            ShareChangesScreen(onBack = { nav.popBackStack() })
+            InviteScreen(onBack = { nav.popBackStack() })
         }
         composable(
-            Route.ApplyChanges.path,
+            Route.JoinEvent.path,
             arguments = listOf(navArgument(Route.ARG_DEEP_LINK) { type = NavType.StringType }),
         ) {
-            ApplyChangesScreen(onBack = { nav.popBackStack() })
+            JoinEventScreen(
+                onBack = { nav.popBackStack() },
+                onJoined = { eventId ->
+                    nav.navigate(Route.EventDetail.build(eventId)) {
+                        popUpTo(Route.Events.path) { inclusive = false }
+                    }
+                },
+            )
         }
         composable(Route.ScanInvitation.path) {
             ScanInvitationScreen(
@@ -109,7 +116,7 @@ fun FairShareNavGraph(
                     val encoded = Base64.getUrlEncoder().withoutPadding()
                         .encodeToString(url.toByteArray(Charsets.UTF_8))
                     // Replace the scanner from the back stack so "back" returns to Events.
-                    nav.navigate(Route.ApplyChanges.build(encoded)) {
+                    nav.navigate(Route.JoinEvent.build(encoded)) {
                         popUpTo(Route.ScanInvitation.path) { inclusive = true }
                     }
                 },

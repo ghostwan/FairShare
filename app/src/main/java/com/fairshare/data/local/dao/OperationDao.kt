@@ -77,7 +77,7 @@ interface OperationDao {
     /**
      * Hard-removes every op for a given event. Used by the local-only
      * "remove from this device" action so that a subsequent re-import
-     * (sneakernet or cloud) starts from a clean slate without losing to
+     * (invitation or cloud) starts from a clean slate without losing to
      * an EventDelete tombstone via LWW.
      */
     @Query("DELETE FROM operations WHERE event_id = :eventId")

@@ -130,7 +130,7 @@ class SyncCryptoTest {
     @Test
     fun `sub-key derivation produces distinct 32-byte keys`() {
         val eventKey = ByteArray(32) { it.toByte() }
-        val mac = SyncCrypto.deriveSneakernetMacKey(eventKey)
+        val mac = SyncCrypto.deriveInvitationMacKey(eventKey)
         val auth = SyncCrypto.deriveWorkerAuthKey(eventKey)
         val cipher = SyncCrypto.deriveCloudCipherKey(eventKey)
         assertEquals(32, mac.size)

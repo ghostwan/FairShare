@@ -15,16 +15,16 @@ sealed class Route(val path: String) {
     data object ScanReceipt : Route("event/{eventId}/expense/scan") {
         fun build(eventId: String) = "event/$eventId/expense/scan"
     }
-    data object ShareChanges : Route("event/{eventId}/share") {
-        fun build(eventId: String) = "event/$eventId/share"
+    data object Invite : Route("event/{eventId}/invite") {
+        fun build(eventId: String) = "event/$eventId/invite"
     }
     /**
-     * Receives a `fairshare://sync` link to import. The link is
+     * Receives a `fairshare://join` invitation link. The link is
      * base64url-encoded into the path so it travels through Compose
      * Navigation safely (raw URLs contain `?` / `&` / `=`).
      */
-    data object ApplyChanges : Route("apply/{deepLink}") {
-        fun build(deepLink: String) = "apply/$deepLink"
+    data object JoinEvent : Route("join/{deepLink}") {
+        fun build(deepLink: String) = "join/$deepLink"
     }
     /** Camera-based QR scanner used to bootstrap a join from another device. */
     data object ScanInvitation : Route("scan-invitation")
