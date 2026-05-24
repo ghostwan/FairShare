@@ -28,14 +28,15 @@ object MaterializerLogic {
         val participants = mutableMapOf<String, ParticipantSnapshot>()
         val expenses = mutableMapOf<String, ExpenseSnapshot>()
 
-        ops.groupBy { it.payload.entityKind to it.payload.entityId }
+        ops.filter { it.payload !is OpPayload.EventDelete }
+            .groupBy { it.payload.entityKind to it.payload.entityId }
             .forEach { (key, group) ->
                 val winner = group.maxWithOrNull(Operation.LwwOrder) ?: return@forEach
                 val (kind, id) = key
                 when (kind) {
                     EntityKind.EVENT -> when (val p = winner.payload) {
                         is OpPayload.EventUpsert -> events[id] = p.event
-                        is OpPayload.EventDelete -> { /* tombstone: omit */ }
+                        is OpPayload.EventDelete -> { /* filtered above */ }
                         else -> error("unexpected payload $p for EVENT")
                     }
                     EntityKind.PARTICIPANT -> when (val p = winner.payload) {
@@ -66,13 +67,19 @@ object MaterializerLogic {
         entityId: String,
         ops: Collection<Operation>,
     ): OpPayload? {
+        // EventDelete tombstones are ignored: deleting an event is a
+        // local-only action (see EventRepositoryImpl.delete), so a remote
+        // EventDelete in the log can only be a residue from an older
+        // build. Treating it as inert lets a re-imported JOIN bundle
+        // re-materialize the event even when a stale tombstone with a
+        // higher lamport is still present.
         val winner = ops
             .asSequence()
+            .filter { it.payload !is OpPayload.EventDelete }
             .filter { it.payload.entityKind == kind && it.payload.entityId == entityId }
             .maxWithOrNull(Operation.LwwOrder)
             ?: return null
         return when (winner.payload) {
-            is OpPayload.EventDelete,
             is OpPayload.ParticipantDelete,
             is OpPayload.ExpenseDelete -> null
             else -> winner.payload

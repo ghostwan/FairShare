@@ -210,4 +210,55 @@ class MaterializerLogicTest {
         assertEquals(3000L, winner.amountCents)
         assertEquals("p2", winner.payerId)
     }
+
+    @Test
+    fun `stale EventDelete tombstone does not beat EventUpsert (resolve)`() {
+        // Regression: EventDelete is never emitted by current code
+        // (EventRepositoryImpl.delete is local-only). Older builds did
+        // emit one and the residual op may still sit in the log on a
+        // device that has since updated. Re-importing the event via a
+        // JOIN bundle must re-materialize it.
+        val upsert = op(
+            opId = "ev-upsert",
+            deviceId = "dA",
+            lamport = 1,
+            payload = OpPayload.EventUpsert(
+                EventSnapshot(id = eventId, name = "Trip", currency = "EUR", createdAt = 0L),
+            ),
+        )
+        val staleDelete = op(
+            opId = "ev-delete-stale",
+            deviceId = "dA",
+            lamport = 99,
+            payload = OpPayload.EventDelete(eventId = eventId),
+        )
+        val state = MaterializerLogic.resolve(listOf(upsert, staleDelete))
+        assertNotNull(state.events[eventId])
+        assertEquals("Trip", state.events[eventId]?.name)
+    }
+
+    @Test
+    fun `stale EventDelete tombstone does not beat EventUpsert (resolveEntity)`() {
+        val upsert = op(
+            opId = "ev-upsert",
+            deviceId = "dA",
+            lamport = 1,
+            payload = OpPayload.EventUpsert(
+                EventSnapshot(id = eventId, name = "Trip", currency = "EUR", createdAt = 0L),
+            ),
+        )
+        val staleDelete = op(
+            opId = "ev-delete-stale",
+            deviceId = "dA",
+            lamport = 99,
+            payload = OpPayload.EventDelete(eventId = eventId),
+        )
+        val winner = MaterializerLogic.resolveEntity(
+            EntityKind.EVENT,
+            eventId,
+            listOf(upsert, staleDelete),
+        )
+        assertTrue(winner is OpPayload.EventUpsert)
+        assertEquals("Trip", (winner as OpPayload.EventUpsert).event.name)
+    }
 }
