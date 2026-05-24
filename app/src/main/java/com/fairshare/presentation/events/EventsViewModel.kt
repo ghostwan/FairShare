@@ -14,8 +14,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -34,11 +37,27 @@ class EventsViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    init {
-        // Best-effort foreground sync on first observation. A failure
-        // here (offline, no events yet) is swallowed; the WorkManager
-        // retry below keeps the network-bound case durable.
+    private var pollJob: Job? = null
+
+    /**
+     * Starts the foreground polling loop. Called from the screen's
+     * ON_RESUME. Does a visible refresh first, then a silent pull every
+     * [POLL_INTERVAL_MS] until [stopPolling] is invoked (ON_PAUSE).
+     */
+    fun resumePolling() {
+        if (pollJob?.isActive == true) return
         refresh()
+        pollJob = viewModelScope.launch {
+            while (isActive) {
+                delay(POLL_INTERVAL_MS)
+                silentRefresh()
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollJob?.cancel()
+        pollJob = null
     }
 
     fun refresh() {
@@ -52,6 +71,13 @@ class EventsViewModel @Inject constructor(
             } finally {
                 _isRefreshing.value = false
             }
+        }
+    }
+
+    private suspend fun silentRefresh() {
+        val outcomes = syncCoordinator.syncAllEvents()
+        if (outcomes.any { it.isFailure }) {
+            SyncWorker.enqueueOneShot(context)
         }
     }
 
@@ -73,5 +99,14 @@ class EventsViewModel @Inject constructor(
 
     fun deleteEvent(id: String) {
         viewModelScope.launch { eventRepository.delete(id) }
+    }
+
+    override fun onCleared() {
+        stopPolling()
+        super.onCleared()
+    }
+
+    private companion object {
+        const val POLL_INTERVAL_MS = 10_000L
     }
 }

@@ -35,9 +35,11 @@ fun EventsScreen(
     var showCreate by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Event?>(null) }
 
-    // Trigger a sync every time the screen comes back to the foreground.
-    // Cheap when nothing changed (no ops to push, empty pull page).
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
+    // Trigger a sync every time the screen comes back to the foreground,
+    // then poll every 10s while resumed so changes from other devices
+    // appear without manual refresh. Stopped in ON_PAUSE.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.resumePolling() }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { vm.stopPolling() }
 
     Scaffold(
         topBar = {

@@ -41,9 +41,11 @@ fun EventDetailScreen(
     var showAddPerson by rememberSaveable { mutableStateOf(false) }
     val currency = state.event?.currency ?: "EUR"
 
-    // Refresh from cloud every time the screen is resumed (back-nav,
-    // process restore, etc). Cheap when there's nothing to do.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
+    // Refresh from cloud every time the screen is resumed, then poll
+    // every 10s while in foreground so remote changes show up without
+    // pull-to-refresh. Stopped in ON_PAUSE.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.resumePolling() }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { vm.stopPolling() }
 
     Scaffold(
         topBar = {

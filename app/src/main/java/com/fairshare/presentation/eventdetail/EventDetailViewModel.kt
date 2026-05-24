@@ -18,12 +18,15 @@ import com.fairshare.domain.usecase.ComputeBalancesUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -61,11 +64,26 @@ class EventDetailViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    init {
-        // Foreground sync on entry. Same fallback as EventsViewModel:
-        // schedule a Worker retry on failure so transient network
-        // hiccups don't lose us a pull.
+    private var pollJob: Job? = null
+
+    /**
+     * Starts the foreground polling loop scoped to this event.
+     * Called from the screen ON_RESUME, cancelled on ON_PAUSE.
+     */
+    fun resumePolling() {
+        if (pollJob?.isActive == true) return
         refresh()
+        pollJob = viewModelScope.launch {
+            while (isActive) {
+                delay(POLL_INTERVAL_MS)
+                silentRefresh()
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollJob?.cancel()
+        pollJob = null
     }
 
     fun refresh() {
@@ -79,6 +97,13 @@ class EventDetailViewModel @Inject constructor(
             } finally {
                 _isRefreshing.value = false
             }
+        }
+    }
+
+    private suspend fun silentRefresh() {
+        val result = syncCoordinator.syncEvent(eventId)
+        if (result.isFailure) {
+            SyncWorker.enqueueOneShot(context, eventId)
         }
     }
 
@@ -98,5 +123,14 @@ class EventDetailViewModel @Inject constructor(
     fun removeExpense(id: String) = viewModelScope.launch {
         expenseRepository.delete(id)
         SyncWorker.enqueueOneShot(context, eventId)
+    }
+
+    override fun onCleared() {
+        stopPolling()
+        super.onCleared()
+    }
+
+    private companion object {
+        const val POLL_INTERVAL_MS = 10_000L
     }
 }
