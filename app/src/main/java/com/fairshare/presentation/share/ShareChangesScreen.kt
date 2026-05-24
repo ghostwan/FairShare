@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -176,11 +177,10 @@ private fun Content(
 
 @Composable
 private fun QrCodeBlock(content: String) {
-    // ZXing returns a bitmap sized to its module grid (often smaller than requested).
-    // We render at a fixed 720px source which gives crisp output for typical sneakernet
-    // payloads (~2 KB) when downscaled into a 280dp Image.
+    // Source bitmap at 1024px gives ~5-6 px per module for a version-40 QR
+    // (177×177 modules), which downscales cleanly into the full-width display.
     val bitmap = remember(content) {
-        runCatching { QrCodeGenerator.generate(content, sizePx = 720) }.getOrNull()
+        runCatching { QrCodeGenerator.generate(content, sizePx = 1024) }.getOrNull()
     }
     Box(
         modifier = Modifier
@@ -193,7 +193,7 @@ private fun QrCodeBlock(content: String) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "QR code",
-                modifier = Modifier.size(280.dp),
+                modifier = Modifier.fillMaxSize().aspectRatio(1f),
             )
         } else {
             Text(

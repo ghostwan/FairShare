@@ -1,5 +1,7 @@
 package com.fairshare.presentation.events
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,8 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fairshare.domain.model.Event
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun EventsScreen(
     onOpenEvent: (String) -> Unit,
@@ -26,6 +29,7 @@ fun EventsScreen(
 ) {
     val events by vm.events.collectAsState()
     var showCreate by rememberSaveable { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<Event?>(null) }
 
     Scaffold(
         topBar = {
@@ -65,7 +69,12 @@ fun EventsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(events, key = { it.id }) { e ->
-                    ElevatedCard(onClick = { onOpenEvent(e.id) }) {
+                    ElevatedCard(
+                        modifier = Modifier.combinedClickable(
+                            onClick = { onOpenEvent(e.id) },
+                            onLongClick = { pendingDelete = e },
+                        ),
+                    ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(e.name, style = MaterialTheme.typography.titleMedium)
                             if (!e.description.isNullOrBlank()) {
@@ -85,6 +94,28 @@ fun EventsScreen(
             onCreate = { name, currency, participants ->
                 vm.createEvent(name, currency, participants)
                 showCreate = false
+            },
+        )
+    }
+
+    pendingDelete?.let { ev ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Supprimer l'événement ?") },
+            text = {
+                Text(
+                    "« ${ev.name} » et toutes ses dépenses seront supprimés " +
+                        "sur cet appareil. Les autres appareils gardent leur copie.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteEvent(ev.id)
+                    pendingDelete = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Annuler") }
             },
         )
     }

@@ -2,6 +2,8 @@ package com.fairshare.presentation.scan
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -148,6 +150,9 @@ private fun CameraScanner(onScanned: (String) -> Unit) {
                 }
                 val analyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    // Higher resolution helps reading dense (version 40) QR codes
+                    // when the receipt is displayed on another phone's screen.
+                    .setTargetResolution(Size(1280, 720))
                     .build()
                 analyzer.setAnalyzer(executor) { proxy ->
                     processFrame(proxy, scanner, dispatched, onScanned)
@@ -183,12 +188,23 @@ private fun processFrame(
     val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
     scanner.process(image)
         .addOnSuccessListener { barcodes ->
+            if (barcodes.isNotEmpty()) {
+                Log.d(
+                    TAG,
+                    "Detected ${barcodes.size} barcode(s): " +
+                        barcodes.joinToString { "${it.format}/${it.rawValue?.take(40)}" },
+                )
+            }
             val url = barcodes
                 .mapNotNull { it.rawValue }
                 .firstOrNull { it.startsWith("fairshare://") }
             if (url != null && dispatched.compareAndSet(false, true)) {
+                Log.i(TAG, "Dispatching scanned URL (len=${url.length})")
                 onScanned(url)
             }
         }
+        .addOnFailureListener { e -> Log.w(TAG, "Barcode scan failed", e) }
         .addOnCompleteListener { proxy.close() }
 }
+
+private const val TAG = "ScanInvitation"
