@@ -2,15 +2,33 @@ package com.fairshare.data.repository
 
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.entity.EventEntity
+import com.fairshare.data.sync.OperationApplier
 import com.fairshare.domain.model.Event
+import com.fairshare.domain.model.sync.EventSnapshot
+import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.repository.EventRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 
+/**
+ * Reads go directly to Room (cheap, no Lamport / op-log involvement
+ * needed). Writes are funneled through [OperationApplier.applyLocal]
+ * which:
+ *
+ * 1. Stamps the change with this device's id + a fresh Lamport tick.
+ * 2. Appends the op to the append-only log.
+ * 3. Re-materializes the affected entity via LWW.
+ *
+ * This is the only writer for the `events` table now: the DAO methods
+ * are still called, but only from inside [OperationApplier].
+ *
+ * Reference: DESIGN.md §5.
+ */
 class EventRepositoryImpl @Inject constructor(
     private val dao: EventDao,
+    private val applier: OperationApplier,
 ) : EventRepository {
 
     override fun observeEvents(): Flow<List<Event>> =
@@ -21,12 +39,33 @@ class EventRepositoryImpl @Inject constructor(
 
     override suspend fun create(event: Event): String {
         val id = event.id.ifBlank { UUID.randomUUID().toString() }
-        dao.insert(event.copy(id = id).toEntity())
+        applier.applyLocal(
+            eventId = id,
+            payload = OpPayload.EventUpsert(event.copy(id = id).toSnapshot()),
+        )
         return id
     }
-    override suspend fun update(event: Event) = dao.update(event.toEntity())
-    override suspend fun delete(id: String) = dao.delete(id)
+
+    override suspend fun update(event: Event) {
+        applier.applyLocal(
+            eventId = event.id,
+            payload = OpPayload.EventUpsert(event.toSnapshot()),
+        )
+    }
+
+    override suspend fun delete(id: String) {
+        applier.applyLocal(
+            eventId = id,
+            payload = OpPayload.EventDelete(eventId = id),
+        )
+    }
 }
 
 private fun EventEntity.toDomain() = Event(id, name, description, currency, createdAt)
-private fun Event.toEntity() = EventEntity(id, name, description, currency, createdAt)
+private fun Event.toSnapshot() = EventSnapshot(
+    id = id,
+    name = name,
+    description = description,
+    currency = currency,
+    createdAt = createdAt,
+)

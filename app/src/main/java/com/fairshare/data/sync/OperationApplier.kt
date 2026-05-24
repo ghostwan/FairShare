@@ -18,6 +18,7 @@ import com.fairshare.domain.model.sync.Operation
 import com.fairshare.domain.model.sync.entityId
 import com.fairshare.domain.model.sync.entityKind
 import kotlinx.serialization.json.Json
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,6 +60,30 @@ class OperationApplier @Inject constructor(
         ignoreUnknownKeys = true
         encodeDefaults = true
         classDiscriminator = "type"
+    }
+
+    /**
+     * Build a fresh [Operation] stamped with this device's identity and a
+     * freshly-ticked Lamport value, then apply it locally. This is the
+     * single entry point for repository writes in the CRDT pipeline
+     * (DESIGN.md §5).
+     *
+     * The op is appended to the log with origin [OpOrigin.LOCAL] and the
+     * materialized tables are updated synchronously before this call
+     * returns, so callers can observe the new state immediately via the
+     * existing Flow-based queries.
+     */
+    suspend fun applyLocal(eventId: String, payload: OpPayload): Operation {
+        val op = Operation(
+            opId = UUID.randomUUID().toString(),
+            eventId = eventId,
+            deviceId = syncIdentityStore.deviceId(),
+            lamport = syncIdentityStore.tickLocal(),
+            wallClockMs = System.currentTimeMillis(),
+            payload = payload,
+        )
+        apply(listOf(op), OpOrigin.LOCAL)
+        return op
     }
 
     /**

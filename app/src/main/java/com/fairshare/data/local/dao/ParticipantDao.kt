@@ -15,6 +15,9 @@ interface ParticipantDao {
     @Query("SELECT * FROM participants WHERE eventId = :eventId ORDER BY name COLLATE NOCASE")
     suspend fun getByEvent(eventId: String): List<ParticipantEntity>
 
+    @Query("SELECT * FROM participants WHERE id = :id")
+    suspend fun getById(id: String): ParticipantEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(participant: ParticipantEntity)
 
