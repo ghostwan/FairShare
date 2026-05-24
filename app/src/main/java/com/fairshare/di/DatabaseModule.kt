@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.fairshare.data.local.FairShareDatabase
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.dao.ExpenseDao
+import com.fairshare.data.local.dao.OperationDao
 import com.fairshare.data.local.dao.ParticipantDao
 import dagger.Module
 import dagger.Provides
@@ -28,4 +29,5 @@ object DatabaseModule {
     @Provides fun provideEventDao(db: FairShareDatabase): EventDao = db.eventDao()
     @Provides fun provideParticipantDao(db: FairShareDatabase): ParticipantDao = db.participantDao()
     @Provides fun provideExpenseDao(db: FairShareDatabase): ExpenseDao = db.expenseDao()
+    @Provides fun provideOperationDao(db: FairShareDatabase): OperationDao = db.operationDao()
 }
