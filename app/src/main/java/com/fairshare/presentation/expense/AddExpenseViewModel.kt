@@ -5,9 +5,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fairshare.data.sync.SyncWorker
+import com.fairshare.domain.model.Category
+import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.SplitMode
+import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import com.fairshare.domain.usecase.ComputeSharesUseCase
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -32,6 +36,8 @@ data class AddExpenseState(
     val selectedIds: Set<String> = emptySet(),
     /** Wall-clock date of the expense (millis). User-editable via the date picker. */
     val dateMillis: Long = System.currentTimeMillis(),
+    /** Selected category id (`default.*` or a custom UUID). Null = uncategorized. */
+    val categoryId: String? = null,
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val isEditMode: Boolean = false,
@@ -43,6 +49,7 @@ class AddExpenseViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val participantRepository: ParticipantRepository,
     private val expenseRepository: ExpenseRepository,
+    private val categoryRepository: CategoryRepository,
     private val computeShares: ComputeSharesUseCase,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -53,6 +60,16 @@ class AddExpenseViewModel @Inject constructor(
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Picker source: hardcoded defaults followed by user-created custom
+     * categories of this event. Reactive on the custom side so a fresh
+     * AddCategory dialog reflects immediately.
+     */
+    val categories: StateFlow<List<Category>> =
+        categoryRepository.observeByEvent(eventId)
+            .map { custom -> DefaultCategories.ALL + custom.sortedBy { it.name.lowercase() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DefaultCategories.ALL)
 
     private val _state = MutableStateFlow(AddExpenseState(isEditMode = editingExpenseId != null))
     val state: StateFlow<AddExpenseState> = _state.asStateFlow()
@@ -70,6 +87,7 @@ class AddExpenseViewModel @Inject constructor(
                             payerId = expense.payerId,
                             selectedIds = expense.shares.map { s -> s.participantId }.toSet(),
                             dateMillis = expense.date,
+                            categoryId = expense.categoryId,
                             isLoading = false,
                         )
                     }
@@ -85,6 +103,23 @@ class AddExpenseViewModel @Inject constructor(
     fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
     fun setMode(m: SplitMode) = _state.update { it.copy(mode = m) }
     fun setDate(millis: Long) = _state.update { it.copy(dateMillis = millis) }
+    fun setCategory(id: String?) = _state.update { it.copy(categoryId = id) }
+
+    /**
+     * Creates a new custom category for the current event and selects
+     * it. Returns the new id so the picker can scroll to it.
+     */
+    fun addCustomCategory(name: String, emoji: String, color: Long) {
+        val cleaned = name.trim()
+        if (cleaned.isEmpty()) return
+        viewModelScope.launch {
+            val id = categoryRepository.upsert(
+                Category(eventId = eventId, name = cleaned, emoji = emoji, color = color),
+            )
+            _state.update { it.copy(categoryId = id) }
+            SyncWorker.enqueueOneShot(context, eventId)
+        }
+    }
     fun togglePayee(id: String) = _state.update {
         it.copy(selectedIds = if (id in it.selectedIds) it.selectedIds - id else it.selectedIds + id)
     }
@@ -109,6 +144,7 @@ class AddExpenseViewModel @Inject constructor(
                     amountCents = amount, payerId = payer,
                     date = s.dateMillis,
                     shares = shares,
+                    categoryId = s.categoryId,
                 )
                 if (editingExpenseId != null) expenseRepository.update(expense)
                 else expenseRepository.add(expense)

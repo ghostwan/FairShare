@@ -7,11 +7,13 @@ import androidx.lifecycle.viewModelScope
 import com.fairshare.data.sync.SyncCoordinator
 import com.fairshare.data.sync.SyncWorker
 import com.fairshare.domain.model.Balance
+import com.fairshare.domain.model.Category
 import com.fairshare.domain.model.Event
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.ExpenseShare
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.Settlement
+import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
@@ -40,6 +42,12 @@ data class EventDetailState(
     val balances: List<Balance> = emptyList(),
     val settlements: List<Settlement> = emptyList(),
     /**
+     * Custom categories of this event. Combined with
+     * [com.fairshare.domain.model.DefaultCategories.ALL] at render time
+     * to resolve an [Expense.categoryId] to a displayable [Category].
+     */
+    val customCategories: List<Category> = emptyList(),
+    /**
      * `true` after the first emission of the upstream `combine`. Lets
      * the screen tell "still loading" from "loaded with empty data" so
      * empty-state placeholders don't flash during the cold start.
@@ -53,6 +61,7 @@ class EventDetailViewModel @Inject constructor(
     private val eventRepository: EventRepository,
     private val participantRepository: ParticipantRepository,
     private val expenseRepository: ExpenseRepository,
+    private val categoryRepository: CategoryRepository,
     private val computeBalances: ComputeBalancesUseCase,
     private val syncCoordinator: SyncCoordinator,
     private val settings: SettingsRepository,
@@ -65,10 +74,19 @@ class EventDetailViewModel @Inject constructor(
         eventRepository.observeEvent(eventId),
         participantRepository.observeByEvent(eventId),
         expenseRepository.observeByEvent(eventId),
-    ) { event, participants, expenses ->
+        categoryRepository.observeByEvent(eventId),
+    ) { event, participants, expenses, customCategories ->
         val balances = computeBalances.balances(participants, expenses)
         val settlements = computeBalances.settlements(balances)
-        EventDetailState(event, participants, expenses, balances, settlements, loaded = true)
+        EventDetailState(
+            event = event,
+            participants = participants,
+            expenses = expenses,
+            balances = balances,
+            settlements = settlements,
+            customCategories = customCategories,
+            loaded = true,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EventDetailState())
 
     private val _isRefreshing = MutableStateFlow(false)

@@ -1,8 +1,10 @@
 package com.fairshare.presentation.eventdetail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -19,11 +21,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.fairshare.domain.model.Category
+import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.toDayHeaderLabel
 import com.fairshare.presentation.common.toStartOfDay
@@ -179,6 +185,12 @@ private fun ExpensesList(
         return
     }
     val byId = state.participants.associateBy { it.id }
+    // Custom categories of this event, indexed by id. Default categories
+    // are resolved from DefaultCategories.BY_ID at render time so the
+    // map stays small and event-scoped.
+    val customById = remember(state.customCategories) {
+        state.customCategories.associateBy { it.id }
+    }
     // Group by local day (start-of-day epoch) so timeline headers
     // collapse multiple expenses from the same day under one banner.
     // Most-recent day first. ExpenseDao already orders by date DESC,
@@ -222,6 +234,13 @@ private fun ExpensesList(
                                 "Payé par ${byId[e.payerId]?.name ?: "?"} • ${e.shares.size} participants"
                             }
                             Text(subtitle, style = MaterialTheme.typography.bodySmall)
+                            val category = e.categoryId?.let {
+                                DefaultCategories.BY_ID[it] ?: customById[it]
+                            }
+                            if (category != null) {
+                                Spacer(Modifier.height(4.dp))
+                                CategoryBadge(category)
+                            }
                         }
                         Text(
                             e.amountCents.centsToString(currency),
@@ -328,5 +347,28 @@ private fun ParticipantsList(state: EventDetailState, onRemove: (String) -> Unit
 private fun EmptyHint(text: String) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/**
+ * Compact rounded tag rendering a [Category]: solid color background at
+ * ~18% alpha so it doesn't fight the card surface, full-color text and
+ * emoji prefix. Sized to read at a glance from the timeline.
+ */
+@Composable
+private fun CategoryBadge(category: Category) {
+    val tint = Color(category.color)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(tint.copy(alpha = 0.18f))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = "${category.emoji} ${category.name}",
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
