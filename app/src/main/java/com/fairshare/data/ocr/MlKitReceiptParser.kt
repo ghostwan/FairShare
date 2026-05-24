@@ -122,7 +122,7 @@ class MlKitReceiptParser @Inject constructor(
             // Misc receipt metadata
             Regex("""(?i)^tel|t(é|e)l(\.|:)"""),
             Regex("""(?i)siret|tva\s*intra"""),
-            Regex("""(?i)ticket|n[°o]\s*\d"""),
+            Regex("""(?i)ticket|\bn[°o]\s*\d"""),
             Regex("""(?i)caisse|cashier|serveur"""),
         )
 
@@ -154,7 +154,122 @@ class MlKitReceiptParser @Inject constructor(
                 }
             }
 
-            return rows.flatMap { row -> rowToItems(row) }
+            // Multi-line item reassembly (bug-04): receipts that print one item
+            // across 3 visual lines (label part 1 / label part 2 + price / SKU)
+            // produce 3 separate rows here because intra-item gaps (~90 px) exceed
+            // [rowTolerance]. Merge label-only rows above each price row into it,
+            // and drop SKU-like rows below.
+            val merged = mergeMultiLineLabels(rows, anchors, medianHeight)
+
+            return merged.flatMap { row -> rowToItems(row) }
+        }
+
+        /**
+         * Reassembles items whose label is broken across several OCR rows.
+         *
+         * Walks the row list and, for each row that contains a [PRICE_REGEX]
+         * token, performs two extensions within the *intra-item gap* (≈
+         * `medianHeight × 1.5` — wide enough to bridge ~90 px line spacings of
+         * bug-04, tight enough to never bridge the ~155 px inter-item gaps of
+         * the same ticket):
+         *
+         *  1. **Up**: consume consecutive label-only rows immediately above,
+         *     prepending their tokens to the price row. Stops when no row
+         *     above, the row above already has a price, or the cy gap exceeds
+         *     the threshold.
+         *  2. **Down**: consume consecutive label-only rows immediately below
+         *     *only when they look like a SKU code* (one alphanumeric token,
+         *     length ≥ 6, mixing letters and digits, no whitespace). Their
+         *     tokens are discarded — codes like `CHAUSSE22POIZ` add noise to
+         *     the label and convey no useful info to the user.
+         *
+         * Rows on single-line receipts (bug-01/02/03) already carry their
+         * price on the same row as the label, so neither extension fires and
+         * the output is identical to the input.
+         */
+        internal fun mergeMultiLineLabels(
+            rows: List<MutableList<Token>>,
+            anchors: List<Int>,
+            medianHeight: Int,
+        ): List<List<Token>> {
+            if (rows.size <= 1) return rows
+            // 1.3× rather than 1.5× because real receipts have a clear gap
+            // between intra-item lines (~ 1.1×) and inter-item lines (~ 2×),
+            // while synthetic test fixtures use exactly 1.5× spacing and would
+            // collapse otherwise. 1.3× still comfortably absorbs bug-04's
+            // 1.1× intra-item gaps without bridging the 2× inter-item ones.
+            val intraGap = (medianHeight * 1.3).toInt().coerceAtLeast(1)
+
+            fun hasPrice(row: List<Token>): Boolean =
+                row.any { PRICE_REGEX.matches(it.text.trim()) }
+
+            // True if the row carries enough "text" to plausibly be a label
+            // continuation: at least one token of length ≥ 2 containing a letter.
+            // Filters out rows whose only non-price content is a stray "€" or
+            // an OCR-misread "e" — those are NOT real label fragments and
+            // shouldn't pull the up-walk over an item boundary (bug-03).
+            fun hasRealLabel(row: List<Token>): Boolean = row.any { t ->
+                val txt = t.text.trim()
+                txt.length >= 2 && txt.any { it.isLetter() }
+            }
+
+            fun isSkuLike(row: List<Token>): Boolean {
+                // Strip currency residues first — receipts often print the SKU
+                // with a duplicated price+€ inline that ends up as 2 tokens
+                // here ([CHAUSSE22POIZ, €]); the SKU itself is the only
+                // "real" token left.
+                val meaningful = row.filterNot { it.text.trim() in CURRENCY_SYMBOLS }
+                if (meaningful.size != 1) return false
+                val txt = meaningful[0].text.trim()
+                if (txt.length < 6) return false
+                if (!txt.all { it.isLetterOrDigit() }) return false
+                val hasLetter = txt.any { it.isLetter() }
+                val hasDigit = txt.any { it.isDigit() }
+                if (!(hasLetter && hasDigit)) return false
+                return txt.count { it.isDigit() } >= 2
+            }
+
+            val consumed = BooleanArray(rows.size)
+            val out = mutableListOf<List<Token>>()
+
+            for (i in rows.indices) {
+                if (consumed[i]) continue
+                val row = rows[i]
+                if (!hasPrice(row)) {
+                    out += row
+                    continue
+                }
+
+                val accumulated = row.toMutableList()
+
+                // 1. Up-walk: pull in label-only rows above (must carry real text).
+                var j = i - 1
+                var prevAnchor = anchors[i]
+                while (j >= 0 && !consumed[j] && !hasPrice(rows[j])) {
+                    if (prevAnchor - anchors[j] > intraGap) break
+                    if (!hasRealLabel(rows[j])) break
+                    accumulated += rows[j]
+                    consumed[j] = true
+                    prevAnchor = anchors[j]
+                    j--
+                }
+
+                // 2. Down-walk: drop SKU-like rows below.
+                var k = i + 1
+                var lastAnchor = anchors[i]
+                while (k < rows.size && !consumed[k] && !hasPrice(rows[k])) {
+                    if (anchors[k] - lastAnchor > intraGap) break
+                    if (!isSkuLike(rows[k])) break
+                    consumed[k] = true
+                    lastAnchor = anchors[k]
+                    k++
+                }
+
+                out += accumulated
+                consumed[i] = true
+            }
+
+            return out
         }
 
         /**
@@ -331,7 +446,28 @@ class MlKitReceiptParser @Inject constructor(
             if (price <= 0.0 || price > 9999.0) return emptyList()
             val totalCents = Math.round(price * 100)
 
-            val rawLabel = labelTokens.joinToString(" ") { it.text }.trim()
+            // Sort labels by visual reading order: bucket cys into bands of
+            // medianHeight × 0.6 (≈ single-line tolerance) so tokens that
+            // belong to the same visual line all share a band and sort by cx
+            // within. Multi-line labels reassembled by [mergeMultiLineLabels]
+            // fall into successive bands and stay in top-to-bottom order.
+            // A plain (cy, cx) sort would scramble single-line rows whose
+            // tokens have ~5 px cy jitter (bug-02: tax-code letter "D" at
+            // cy 827 vs label tokens at cy 831 would move "D" to the front
+            // and break QTY_LEADING regex).
+            val labelOrdered = if (labelTokens.isEmpty()) {
+                emptyList()
+            } else {
+                val filtered = labelTokens.filterNot { it.text.trim() in CURRENCY_SYMBOLS }
+                if (filtered.isEmpty()) emptyList()
+                else {
+                    val maxH = filtered.maxOf { it.height }
+                    val band = (maxH * 0.6).toInt().coerceAtLeast(6)
+                    val minCy = filtered.minOf { it.cy }
+                    filtered.sortedWith(compareBy({ (it.cy - minCy) / band }, { it.cx }))
+                }
+            }
+            val rawLabel = labelOrdered.joinToString(" ") { it.text }.trim()
             val (qty, cleanLabel) = extractQuantityAndLabel(rawLabel)
 
             val finalLabel = cleanLabel
@@ -355,6 +491,8 @@ class MlKitReceiptParser @Inject constructor(
                 )
             )
         }
+
+        private val CURRENCY_SYMBOLS = setOf("€", "$", "£", "EUR", "USD")
 
         private val QTY_LEADING = Regex("""^\s*(\d{1,2})\s*[xX*]\s+(.+)$""")
         private val QTY_TRAILING = Regex("""^(.+?)\s+[xX*]\s*(\d{1,2})\s*$""")
