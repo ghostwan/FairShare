@@ -204,6 +204,7 @@ class OperationApplier @Inject constructor(
                         amountCents = snap.amountCents,
                         payerId = snap.payerId,
                         date = snap.date,
+                        isSettlement = snap.isSettlement,
                     )
                     val shareEntities = snap.shares.map {
                         ExpenseShareEntity(

@@ -51,6 +51,15 @@ data class ExpenseSnapshot(
     val date: Long,
     val shares: List<ExpenseShareSnapshot> = emptyList(),
     val items: List<ExpenseItemSnapshot> = emptyList(),
+    /**
+     * Marks the expense as a settlement (i.e. a real-world reimbursement
+     * between two participants) rather than a shared cost. Settlements
+     * are stored as plain expenses with payer = debtor and a single
+     * share targeting the creditor, so the balance algorithm naturally
+     * zeroes them out. The flag only changes the UI rendering. Defaulted
+     * to `false` for wire-format backward compatibility.
+     */
+    val isSettlement: Boolean = false,
 )
 
 @Serializable

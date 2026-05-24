@@ -17,6 +17,14 @@ data class Expense(
     val date: Long = System.currentTimeMillis(),
     val shares: List<ExpenseShare> = emptyList(),
     val items: List<ExpenseItem> = emptyList(),
+    /**
+     * `true` when this row represents a reimbursement between two
+     * participants (payer = debtor, single share on the creditor).
+     * Same balance semantics as a regular expense; the flag only
+     * drives a distinct rendering in the timeline and tags the row
+     * as system-generated for history purposes.
+     */
+    val isSettlement: Boolean = false,
 )
 
 data class ExpenseShare(

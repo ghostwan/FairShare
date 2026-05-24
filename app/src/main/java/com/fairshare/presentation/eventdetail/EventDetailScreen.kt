@@ -6,10 +6,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -106,7 +108,7 @@ fun EventDetailScreen(
                         onClick = { id -> onEditExpense(vm.eventId, id) },
                         onDelete = vm::removeExpense,
                     )
-                    Tab.Balances -> BalancesList(state, currency)
+                    Tab.Balances -> BalancesList(state, currency, onSettle = vm::recordSettlement)
                     Tab.Participants -> ParticipantsList(state, onRemove = vm::removeParticipant)
                 }
             }
@@ -165,12 +167,25 @@ private fun ExpensesList(
             items(dayExpenses, key = { it.id }) { e ->
                 ElevatedCard(onClick = { onClick(e.id) }) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (e.isSettlement) {
+                            Icon(
+                                Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                        }
                         Column(Modifier.weight(1f)) {
                             Text(e.title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Payé par ${byId[e.payerId]?.name ?: "?"} • ${e.shares.size} participants",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                            val subtitle = if (e.isSettlement) {
+                                val from = byId[e.payerId]?.name ?: "?"
+                                val to = e.shares.firstOrNull()?.participantId
+                                    ?.let { byId[it]?.name } ?: "?"
+                                "Remboursement • $from → $to"
+                            } else {
+                                "Payé par ${byId[e.payerId]?.name ?: "?"} • ${e.shares.size} participants"
+                            }
+                            Text(subtitle, style = MaterialTheme.typography.bodySmall)
                         }
                         Text(
                             e.amountCents.centsToString(currency),
@@ -186,7 +201,11 @@ private fun ExpensesList(
 }
 
 @Composable
-private fun BalancesList(state: EventDetailState, currency: String) {
+private fun BalancesList(
+    state: EventDetailState,
+    currency: String,
+    onSettle: (com.fairshare.domain.model.Settlement) -> Unit,
+) {
     if (state.participants.isEmpty()) {
         EmptyHint("Ajoute des participants pour voir les soldes.")
         return
@@ -219,7 +238,14 @@ private fun BalancesList(state: EventDetailState, currency: String) {
             items(state.settlements) { s ->
                 ListItem(
                     headlineContent = { Text("${s.fromName} → ${s.toName}") },
-                    trailingContent = { Text(s.amountCents.centsToString(currency), fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text(s.amountCents.centsToString(currency), fontWeight = FontWeight.SemiBold) },
+                    trailingContent = {
+                        TextButton(onClick = { onSettle(s) }) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Remboursé")
+                        }
+                    },
                 )
             }
         }

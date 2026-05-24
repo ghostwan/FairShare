@@ -9,6 +9,7 @@ import com.fairshare.data.sync.SyncWorker
 import com.fairshare.domain.model.Balance
 import com.fairshare.domain.model.Event
 import com.fairshare.domain.model.Expense
+import com.fairshare.domain.model.ExpenseShare
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.Settlement
 import com.fairshare.domain.repository.EventRepository
@@ -124,6 +125,34 @@ class EventDetailViewModel @Inject constructor(
 
     fun removeExpense(id: String) = viewModelScope.launch {
         expenseRepository.delete(id)
+        SyncWorker.enqueueOneShot(context, eventId)
+    }
+
+    /**
+     * Records a [Settlement] suggestion as a real expense so the balances
+     * recompute to zero on its participants. Stored as a plain expense
+     * with payer = debtor and a single share on the creditor (same total
+     * amount), tagged `isSettlement = true` so the timeline can render it
+     * differently. After the write the suggestion list disappears
+     * naturally on the next emission of [computeBalances].
+     */
+    fun recordSettlement(settlement: Settlement) = viewModelScope.launch {
+        val title = "Remboursement ${settlement.fromName} → ${settlement.toName}"
+        expenseRepository.add(
+            Expense(
+                eventId = eventId,
+                title = title,
+                amountCents = settlement.amountCents,
+                payerId = settlement.fromId,
+                shares = listOf(
+                    ExpenseShare(
+                        participantId = settlement.toId,
+                        amountCents = settlement.amountCents,
+                    )
+                ),
+                isSettlement = true,
+            )
+        )
         SyncWorker.enqueueOneShot(context, eventId)
     }
 

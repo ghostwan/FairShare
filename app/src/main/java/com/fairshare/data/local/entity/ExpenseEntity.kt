@@ -22,6 +22,7 @@ data class ExpenseEntity(
     val amountCents: Long,
     val payerId: String,
     val date: Long,
+    val isSettlement: Boolean = false,
 )
 
 @Entity(
