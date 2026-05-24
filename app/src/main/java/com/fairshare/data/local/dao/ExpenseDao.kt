@@ -1,12 +1,14 @@
 package com.fairshare.data.local.dao
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import androidx.room.Update
 import com.fairshare.data.local.entity.ExpenseEntity
 import com.fairshare.data.local.entity.ExpenseItemAssignmentEntity
 import com.fairshare.data.local.entity.ExpenseItemEntity
@@ -32,65 +34,114 @@ data class ExpenseWithDetails(
 )
 
 @Dao
-interface ExpenseDao {
+abstract class ExpenseDao {
     @Transaction
     @Query("SELECT * FROM expenses WHERE eventId = :eventId ORDER BY date DESC")
-    fun observeByEvent(eventId: String): Flow<List<ExpenseWithDetails>>
+    abstract fun observeByEvent(eventId: String): Flow<List<ExpenseWithDetails>>
 
     @Transaction
     @Query("SELECT * FROM expenses WHERE id = :id")
-    suspend fun getById(id: String): ExpenseWithDetails?
+    abstract suspend fun getById(id: String): ExpenseWithDetails?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertExpense(expense: ExpenseEntity)
+    abstract suspend fun insertExpense(expense: ExpenseEntity)
+
+    @Update
+    abstract suspend fun updateExpense(expense: ExpenseEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertShares(shares: List<ExpenseShareEntity>)
+    abstract suspend fun insertShares(shares: List<ExpenseShareEntity>)
+
+    @Delete
+    abstract suspend fun deleteShares(shares: List<ExpenseShareEntity>)
+
+    @Update
+    abstract suspend fun updateShares(shares: List<ExpenseShareEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertItem(item: ExpenseItemEntity)
+    abstract suspend fun insertItem(item: ExpenseItemEntity)
+
+    @Update
+    abstract suspend fun updateItem(item: ExpenseItemEntity)
+
+    @Query("DELETE FROM expense_items WHERE id IN (:ids)")
+    abstract suspend fun deleteItemsByIds(ids: List<String>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAssignments(assignments: List<ExpenseItemAssignmentEntity>)
+    abstract suspend fun insertAssignments(assignments: List<ExpenseItemAssignmentEntity>)
+
+    @Delete
+    abstract suspend fun deleteAssignments(assignments: List<ExpenseItemAssignmentEntity>)
 
     @Query("DELETE FROM expense_shares WHERE expenseId = :expenseId")
-    suspend fun deleteSharesFor(expenseId: String)
+    abstract suspend fun deleteSharesFor(expenseId: String)
 
     @Query("DELETE FROM expense_items WHERE expenseId = :expenseId")
-    suspend fun deleteItemsFor(expenseId: String)
+    abstract suspend fun deleteItemsFor(expenseId: String)
 
     @Query("DELETE FROM expenses WHERE id = :id")
-    suspend fun delete(id: String)
+    abstract suspend fun delete(id: String)
 
     /**
-     * Upserts an expense together with its shares and (optionally) per-article items.
-     * Items and assignments are fully replaced on update.
+     * Upserts an expense together with its shares and per-article items.
      *
-     * The caller is responsible for assigning ids (UUID strings) to the expense,
-     * its shares (implicitly via composite key) and each item. This is required
-     * because the same id must be reused on every replay for the upcoming CRDT
-     * materializer to converge (see DESIGN.md §3 / step F).
+     * Unlike a delete-then-insert, this implementation diffs the new tree
+     * against what is already persisted and only emits the strict minimum of
+     * SQL writes: inserts for newly-added rows, updates for rows whose payload
+     * actually changed (composite-key rows that already exist with identical
+     * fields are skipped), and targeted deletes for rows no longer present.
+     *
+     * This matters for the CRDT materializer (DESIGN.md §5): concurrent
+     * operations may converge by re-materializing an expense whose only one
+     * field changed; we must not blow away unrelated shares/items just to
+     * re-insert them with the same ids and content.
+     *
+     * The caller is responsible for assigning stable UUID ids to the expense
+     * and each item; ids must be preserved across replays so the diff matches
+     * the right rows.
      */
     @Transaction
-    suspend fun upsertWithDetails(
+    open suspend fun upsertWithDetails(
         expense: ExpenseEntity,
         shares: List<ExpenseShareEntity>,
         items: List<Pair<ExpenseItemEntity, List<String>>>,
     ) {
-        insertExpense(expense)
+        val existing = getById(expense.id)
+        if (existing == null) {
+            insertExpense(expense)
+        } else if (existing.expense != expense) {
+            updateExpense(expense)
+        }
 
-        deleteSharesFor(expense.id)
-        insertShares(shares.map { it.copy(expenseId = expense.id) })
+        val shareDiff = ExpenseDetailsDiff.shares(
+            expenseId = expense.id,
+            incoming = shares,
+            current = existing?.shares ?: emptyList(),
+        )
+        if (shareDiff.toDelete.isNotEmpty()) deleteShares(shareDiff.toDelete)
+        if (shareDiff.toInsert.isNotEmpty()) insertShares(shareDiff.toInsert)
+        if (shareDiff.toUpdate.isNotEmpty()) updateShares(shareDiff.toUpdate)
 
-        deleteItemsFor(expense.id)
-        items.forEachIndexed { idx, (item, participants) ->
-            val positioned = item.copy(expenseId = expense.id, position = idx)
-            insertItem(positioned)
-            if (participants.isNotEmpty()) {
-                insertAssignments(participants.map { pid ->
-                    ExpenseItemAssignmentEntity(itemId = positioned.id, participantId = pid)
-                })
-            }
+        val itemDiff = ExpenseDetailsDiff.items(
+            expenseId = expense.id,
+            incoming = items.map { it.first },
+            current = existing?.items?.map { it.item } ?: emptyList(),
+        )
+        if (itemDiff.toDeleteIds.isNotEmpty()) deleteItemsByIds(itemDiff.toDeleteIds)
+        itemDiff.toInsert.forEach { insertItem(it) }
+        itemDiff.toUpdate.forEach { updateItem(it) }
+
+        val currentAssignmentsByItem = existing?.items
+            ?.associate { it.item.id to it.assignments }
+            ?: emptyMap()
+        for ((item, participantIds) in items) {
+            val assignmentDiff = ExpenseDetailsDiff.assignments(
+                itemId = item.id,
+                incomingParticipantIds = participantIds,
+                current = currentAssignmentsByItem[item.id] ?: emptyList(),
+            )
+            if (assignmentDiff.toDelete.isNotEmpty()) deleteAssignments(assignmentDiff.toDelete)
+            if (assignmentDiff.toInsert.isNotEmpty()) insertAssignments(assignmentDiff.toInsert)
         }
     }
 }
