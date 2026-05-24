@@ -1,0 +1,18 @@
+name = "fairshare-sync"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fairshare-sync-db"
+# database_id is filled in after `wrangler d1 create fairshare-sync-db`.
+# Keep the placeholder so `wrangler dev --local` works against a local SQLite.
+database_id = "REPLACE_WITH_REAL_D1_ID"
+
+[vars]
+# Maximum number of operations returned by a single GET /ops?since= page.
+PULL_PAGE_SIZE = "500"
+# Maximum bytes accepted in a single POST /ops body. Worker request bodies are
+# already capped at 100 MB by Cloudflare; this is the app-level guardrail.
+MAX_PUSH_BYTES = "1048576"

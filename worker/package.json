@@ -1,0 +1,17 @@
+{
+  "name": "fairshare-sync-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FairShare zero-knowledge sync Worker (Cloudflare Workers + D1).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply fairshare-sync-db --local",
+    "migrate:remote": "wrangler d1 migrations apply fairshare-sync-db --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "typescript": "^5.5.4",
+    "wrangler": "^3.78.0"
+  }
+}
