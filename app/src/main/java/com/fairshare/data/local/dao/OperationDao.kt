@@ -47,6 +47,27 @@ interface OperationDao {
     @Query("SELECT MAX(lamport) FROM operations WHERE event_id = :eventId AND origin = :origin")
     suspend fun maxLamportByOrigin(eventId: String, origin: String): Long?
 
+    /**
+     * Lexicographically greatest `op_id` among ops with `(event_id,
+     * origin, lamport)` matching the given values. Together with
+     * [maxLamportByOrigin] it forms the composite `(lamport, op_id)`
+     * pull cursor that [com.fairshare.data.sync.SyncCoordinator]
+     * sends to the Worker — preventing data loss when more than
+     * `PULL_PAGE_SIZE` cloud ops share the same lamport (the boundary
+     * case where a strict `lamport > since` cursor would silently skip
+     * the remainder on the next page).
+     */
+    @Query(
+        "SELECT op_id FROM operations " +
+            "WHERE event_id = :eventId AND origin = :origin AND lamport = :lamport " +
+            "ORDER BY op_id DESC LIMIT 1",
+    )
+    suspend fun maxOpIdAtLamportByOrigin(
+        eventId: String,
+        origin: String,
+        lamport: Long,
+    ): String?
+
     @Query("SELECT COUNT(*) FROM operations WHERE event_id = :eventId")
     fun observeCount(eventId: String): Flow<Int>
 

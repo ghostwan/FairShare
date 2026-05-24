@@ -76,13 +76,19 @@ class SyncCoordinatorConvergenceTest {
             eventId: String,
             bearer: String,
             since: Long,
+            sinceOp: String,
         ): Result<PullResult> = mutex.withLock {
             val rows = store[eventId].orEmpty().values
-                .filter { it.lamport > since }
+                .filter { row ->
+                    row.lamport > since ||
+                        (row.lamport == since && sinceOp.isNotEmpty() && row.opId > sinceOp)
+                }
                 .sortedWith(compareBy({ it.lamport }, { it.opId }))
             val ops = rows.map { EncryptedOp(it.opId, it.lamport, it.deviceId, it.nonce, it.ciphertext) }
-            val nextSince = ops.maxOfOrNull { it.lamport } ?: since
-            Result.success(PullResult(ops, nextSince, hasMore = false))
+            val last = ops.lastOrNull()
+            val nextSince = last?.lamport ?: since
+            val nextSinceOp = last?.opId ?: sinceOp
+            Result.success(PullResult(ops, nextSince, nextSinceOp, hasMore = false))
         }
     }
 
@@ -126,8 +132,10 @@ class SyncCoordinatorConvergenceTest {
 
         /** Pull, decrypt, observe lamport, dedup into the local log. */
         suspend fun pull() {
-            val cloudMax = log.filter { it.deviceId != deviceId }.maxOfOrNull { it.lamport } ?: 0L
-            val result = transport.pull(EVENT_ID, bearer, cloudMax).getOrThrow()
+            val cloudOps = log.filter { it.deviceId != deviceId }
+            val cloudMax = cloudOps.maxOfOrNull { it.lamport } ?: 0L
+            val cloudMaxOp = cloudOps.filter { it.lamport == cloudMax }.maxOfOrNull { it.opId }.orEmpty()
+            val result = transport.pull(EVENT_ID, bearer, cloudMax, cloudMaxOp).getOrThrow()
             val known = log.map { it.opId }.toHashSet()
             for (enc in result.ops) {
                 if (enc.opId in known) continue
@@ -260,6 +268,50 @@ class SyncCoordinatorConvergenceTest {
         assertEquals(10, sa.expenses.size)
         assertEquals(sa.events, sb.events)
         assertEquals(sa.expenses, sb.expenses)
+    }
+
+    @Test
+    fun `composite cursor returns ops sharing the same lamport across pages`() = runTest {
+        val transport = InMemoryCloudTransport()
+        val key = ByteArray(32) { 9 }
+        val bearer = SyncCrypto.computeWorkerBearer(key, EVENT_ID)
+        val cipherKey = SyncCrypto.deriveCloudCipherKey(key)
+
+        // Inject five ops all sharing lamport = 7, with distinct op_ids
+        // that span the lexicographic range so the ordering matters.
+        val ops = listOf("a", "b", "c", "d", "e").map { suffix ->
+            Operation(
+                opId = "0000000$suffix-0000-0000-0000-00000000abcd".take(36),
+                eventId = EVENT_ID,
+                deviceId = "device-X",
+                lamport = 7L,
+                wallClockMs = 0L,
+                payload = OpPayload.EventUpsert(
+                    EventSnapshot(id = EVENT_ID, name = "round-$suffix", createdAt = 0L),
+                ),
+            )
+        }
+        val enc = ops.map { CloudOpCodec.encrypt(it, cipherKey) }
+        transport.push(EVENT_ID, bearer, enc).getOrThrow()
+
+        // First page: legacy-style call with sinceOp = "" returns all five.
+        val page1 = transport.pull(EVENT_ID, bearer, 0L, "").getOrThrow()
+        assertEquals(5, page1.ops.size)
+
+        // Simulate the bug fix: a client that already saw the first
+        // three ops at lamport=7 should fetch only the remaining two
+        // by passing (since=7, sinceOp=<third op id>).
+        val sortedIds = ops.map { it.opId }.sorted()
+        val page2 = transport.pull(EVENT_ID, bearer, 7L, sortedIds[2]).getOrThrow()
+        assertEquals(2, page2.ops.size)
+        assertEquals(sortedIds.drop(3), page2.ops.map { it.opId })
+
+        // And a cursor at the very last op_id of lamport=7 returns
+        // nothing — the previous Lamport-only cursor would have done
+        // the same here, but on a real Worker page split it would have
+        // dropped the remainder. This case is what motivates the fix.
+        val page3 = transport.pull(EVENT_ID, bearer, 7L, sortedIds.last()).getOrThrow()
+        assertEquals(0, page3.ops.size)
     }
 
     @Test

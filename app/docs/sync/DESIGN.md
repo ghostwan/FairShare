@@ -254,8 +254,13 @@ Endpoints (actual, see `worker/src/index.ts`):
   deviceId, nonce, ciphertext}`. Idempotent (opId is PK). Empty
   `ops` is allowed and used as a no-op handshake to register the
   bearer (see §6.4).
-- `GET /events/{eventId}/ops?since=N` — pull ops with `lamport > N`.
-  Bounded page size (500); response includes `nextSince` + `hasMore`.
+- `GET /events/{eventId}/ops?since=N[&since_op=UUID]` — pull ops
+  strictly greater than the composite cursor `(since, since_op)` in
+  `(lamport, op_id)` lexicographic order. Bounded page size (500);
+  response includes `nextSince`, `nextSinceOp`, and `hasMore`. The
+  `since_op` parameter is optional for backward compatibility: when
+  omitted, the Worker falls back to legacy strict `lamport > since`
+  semantics.
 
 The Worker performs no decryption and stores no plaintext. Auth is by
 event-scoped HMAC token (derived from the event key) so random people
@@ -370,6 +375,6 @@ Post-L follow-ups (in flight or planned):
 - Optimistic push from the write-side ViewModels (don't wait for
   ON_RESUME to propagate a newly-emitted expense). Planned.
 - Settings screen exposing cloud sync status + base URL override.
-  Planned.
+  ✅
 - Worker cursor composite `(lamport, op_id)` to handle the
-  pathological case of > 500 ops sharing the same lamport. Planned.
+  pathological case of > 500 ops sharing the same lamport. ✅

@@ -44,6 +44,7 @@ interface PullOp {
 interface PullResponse {
     ops: PullOp[];
     nextSince: number; // max lamport returned, or `since` if empty
+    nextSinceOp: string; // op_id tiebreaker for the (lamport, op_id) cursor
     hasMore: boolean;
 }
 
@@ -205,7 +206,7 @@ async function handlePush(
     return Response.json({ inserted });
 }
 
-// ---------- GET /events/:id/ops?since=N ----------
+// ---------- GET /events/:id/ops?since=N[&since_op=UUID] ----------
 
 async function handlePull(eventId: string, url: URL, env: Env): Promise<Response> {
     const sinceStr = url.searchParams.get("since") ?? "0";
@@ -213,22 +214,44 @@ async function handlePull(eventId: string, url: URL, env: Env): Promise<Response
     if (!Number.isFinite(since) || since < 0 || since > MAX_LAMPORT) {
         return jsonError(400, "bad_since");
     }
+    // Composite cursor `(lamport, op_id)`. When absent, fall back to the
+    // legacy strict `lamport > since` semantics so older clients keep
+    // working. New clients always pass `since_op` and benefit from
+    // correct paging when > PULL_PAGE_SIZE ops share the same Lamport
+    // value (otherwise the last page at that lamport would be silently
+    // dropped — `nextSince = lamport` + strict `lamport > since` would
+    // skip every remaining op at exactly `lamport`).
+    const sinceOpRaw = url.searchParams.get("since_op");
+    const sinceOp = sinceOpRaw ?? "";
+    if (sinceOp.length > 0 && !UUID_RE.test(sinceOp)) {
+        return jsonError(400, "bad_since_op");
+    }
     const pageSize = parseInt(env.PULL_PAGE_SIZE, 10);
 
-    const result = await env.DB
-        .prepare(
-            "SELECT op_id, lamport, device_id, nonce, ciphertext " +
-            "FROM ops WHERE event_id = ?1 AND lamport > ?2 " +
-            "ORDER BY lamport ASC, op_id ASC LIMIT ?3",
-        )
-        .bind(eventId, since, pageSize + 1)
-        .all<{
-            op_id: string;
-            lamport: number;
-            device_id: string;
-            nonce: ArrayBuffer | Uint8Array;
-            ciphertext: ArrayBuffer | Uint8Array;
-        }>();
+    const stmt = sinceOp.length === 0
+        ? env.DB
+            .prepare(
+                "SELECT op_id, lamport, device_id, nonce, ciphertext " +
+                "FROM ops WHERE event_id = ?1 AND lamport > ?2 " +
+                "ORDER BY lamport ASC, op_id ASC LIMIT ?3",
+            )
+            .bind(eventId, since, pageSize + 1)
+        : env.DB
+            .prepare(
+                "SELECT op_id, lamport, device_id, nonce, ciphertext " +
+                "FROM ops WHERE event_id = ?1 " +
+                "AND (lamport > ?2 OR (lamport = ?2 AND op_id > ?3)) " +
+                "ORDER BY lamport ASC, op_id ASC LIMIT ?4",
+            )
+            .bind(eventId, since, sinceOp, pageSize + 1);
+
+    const result = await stmt.all<{
+        op_id: string;
+        lamport: number;
+        device_id: string;
+        nonce: ArrayBuffer | Uint8Array;
+        ciphertext: ArrayBuffer | Uint8Array;
+    }>();
     const rows = result.results ?? [];
     const hasMore = rows.length > pageSize;
     const trimmed = hasMore ? rows.slice(0, pageSize) : rows;
@@ -240,8 +263,10 @@ async function handlePull(eventId: string, url: URL, env: Env): Promise<Response
         nonce: bytesToBase64(toBytes(r.nonce)),
         ciphertext: bytesToBase64(toBytes(r.ciphertext)),
     }));
-    const nextSince = ops.length > 0 ? ops[ops.length - 1].lamport : since;
-    const payload: PullResponse = { ops, nextSince, hasMore };
+    const last = trimmed[trimmed.length - 1];
+    const nextSince = last ? last.lamport : since;
+    const nextSinceOp = last ? last.op_id : sinceOp;
+    const payload: PullResponse = { ops, nextSince, nextSinceOp, hasMore };
     return Response.json(payload);
 }
 

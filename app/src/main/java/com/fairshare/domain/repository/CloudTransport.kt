@@ -66,11 +66,17 @@ interface CloudTransport {
     data class PullResult(
         val ops: List<EncryptedOp>,
         /**
-         * Cursor to feed back into the next [pull] call. Always
-         * monotonic; when [hasMore] is false the caller can stop
-         * paging until it has new ops to push.
+         * Composite cursor `(lamport, opId)` to feed back into the
+         * next [pull] call. Always monotonic; when [hasMore] is false
+         * the caller can stop paging until it has new ops to push.
+         *
+         * The opId tiebreaker matters when the Worker page boundary
+         * splits a group of ops sharing the same lamport — using only
+         * `nextSince` would silently drop the remainder on the next
+         * request (`lamport > since` is strict).
          */
         val nextSince: Long,
+        val nextSinceOp: String,
         val hasMore: Boolean,
     )
 
@@ -85,14 +91,18 @@ interface CloudTransport {
     ): Result<PushResult>
 
     /**
-     * GET `/events/{eventId}/ops?since={since}`. Returns ops with
-     * lamport strictly greater than [since], ordered by `(lamport,
-     * opId)`. The Worker pages with `hasMore` so callers should loop
-     * until it returns false.
+     * GET `/events/{eventId}/ops?since={since}[&since_op={sinceOp}]`.
+     * Returns ops greater than `(since, sinceOp)` in `(lamport, opId)`
+     * lexicographic order. Pass `sinceOp = ""` on the very first call
+     * for an event to start from the beginning of the log. The Worker
+     * pages with `hasMore` so callers should loop until it returns
+     * false, feeding back both [PullResult.nextSince] and
+     * [PullResult.nextSinceOp].
      */
     suspend fun pull(
         eventId: String,
         bearer: String,
         since: Long,
+        sinceOp: String,
     ): Result<PullResult>
 }

@@ -124,10 +124,18 @@ class SyncCoordinator @Inject constructor(
         var skipped = 0
         // Paginate until the Worker reports hasMore = false. We re-read
         // the local cursor on every iteration so it reflects the ops
-        // we just applied (the Worker requires strict `lamport > since`).
+        // we just applied. The cursor is composite `(lamport, opId)`:
+        // a Lamport-only cursor would silently drop the remainder when
+        // the Worker page boundary splits a group of ops sharing the
+        // same lamport.
         while (true) {
             val since = operationDao.maxLamportByOrigin(eventId, OpOrigin.CLOUD.name) ?: 0L
-            val pullResult = cloud.pull(eventId, bearer, since)
+            val sinceOp = if (since > 0L) {
+                operationDao.maxOpIdAtLamportByOrigin(eventId, OpOrigin.CLOUD.name, since).orEmpty()
+            } else {
+                ""
+            }
+            val pullResult = cloud.pull(eventId, bearer, since, sinceOp)
             val page = pullResult.getOrElse { err ->
                 // Defense in depth: if the Worker still thinks our
                 // bearer is unknown (push race, or a transient

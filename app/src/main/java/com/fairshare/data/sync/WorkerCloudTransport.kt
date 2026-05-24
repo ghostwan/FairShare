@@ -78,6 +78,7 @@ class WorkerCloudTransport @Inject constructor(
     private data class PullResponseWire(
         val ops: List<PullOpWire> = emptyList(),
         val nextSince: Long = 0,
+        val nextSinceOp: String = "",
         val hasMore: Boolean = false,
     )
 
@@ -117,10 +118,15 @@ class WorkerCloudTransport @Inject constructor(
         eventId: String,
         bearer: String,
         since: Long,
+        sinceOp: String,
     ): Result<PullResult> = runCatching {
         val baseUrl = baseUrlOrThrow()
+        val urlBuilder = StringBuilder("$baseUrl/events/$eventId/ops?since=$since")
+        if (sinceOp.isNotEmpty()) {
+            urlBuilder.append("&since_op=").append(sinceOp)
+        }
         val request = Request.Builder()
-            .url("$baseUrl/events/$eventId/ops?since=$since")
+            .url(urlBuilder.toString())
             .header("authorization", "Bearer $bearer")
             .get()
             .build()
@@ -141,6 +147,7 @@ class WorkerCloudTransport @Inject constructor(
                 )
             },
             nextSince = parsed.nextSince,
+            nextSinceOp = parsed.nextSinceOp,
             hasMore = parsed.hasMore,
         )
     }

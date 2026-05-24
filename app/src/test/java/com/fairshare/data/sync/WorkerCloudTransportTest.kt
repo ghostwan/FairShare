@@ -90,7 +90,7 @@ class WorkerCloudTransportTest {
                 """.trimIndent(),
             ).addHeader("content-type", "application/json"),
         )
-        val result = transport.pull("evt-1", "abcd", since = 0L).getOrThrow()
+        val result = transport.pull("evt-1", "abcd", since = 0L, sinceOp = "").getOrThrow()
         assertEquals(1, result.ops.size)
         assertEquals("op-1", result.ops[0].opId)
         assertEquals(3L, result.ops[0].lamport)
@@ -110,7 +110,7 @@ class WorkerCloudTransportTest {
     @Test
     fun `pull handles empty page`() = runTest {
         server.enqueue(MockResponse().setBody("""{"ops":[],"nextSince":42,"hasMore":false}"""))
-        val result = transport.pull("evt-1", "abcd", since = 42L).getOrThrow()
+        val result = transport.pull("evt-1", "abcd", since = 42L, sinceOp = "").getOrThrow()
         assertEquals(0, result.ops.size)
         assertEquals(42L, result.nextSince)
     }
@@ -118,7 +118,7 @@ class WorkerCloudTransportTest {
     @Test
     fun `pull rejects malformed JSON as failure`() = runTest {
         server.enqueue(MockResponse().setBody("not-json"))
-        val result = transport.pull("evt-1", "abcd", since = 0L)
+        val result = transport.pull("evt-1", "abcd", since = 0L, sinceOp = "")
         assertTrue(result.isFailure)
     }
 
