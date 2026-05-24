@@ -1,8 +1,10 @@
 package com.fairshare.presentation.expense
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fairshare.data.sync.SyncWorker
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.SplitMode
@@ -12,6 +14,7 @@ import com.fairshare.domain.usecase.ComputeSharesUseCase
 import com.fairshare.presentation.common.parseAmountToCents
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,7 @@ class AddExpenseViewModel @Inject constructor(
     private val participantRepository: ParticipantRepository,
     private val expenseRepository: ExpenseRepository,
     private val computeShares: ComputeSharesUseCase,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
@@ -102,6 +106,9 @@ class AddExpenseViewModel @Inject constructor(
                 )
                 if (editingExpenseId != null) expenseRepository.update(expense)
                 else expenseRepository.add(expense)
+                // Propagate the newly-emitted op without waiting for
+                // the next ON_RESUME of the events list.
+                SyncWorker.enqueueOneShot(context, eventId)
                 _state.update { it.copy(isSaving = false) }
                 onSuccess()
             }
@@ -112,6 +119,7 @@ class AddExpenseViewModel @Inject constructor(
         val id = editingExpenseId ?: return
         viewModelScope.launch {
             expenseRepository.delete(id)
+            SyncWorker.enqueueOneShot(context, eventId)
             onSuccess()
         }
     }

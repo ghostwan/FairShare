@@ -1,9 +1,11 @@
 package com.fairshare.presentation.receipt
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fairshare.data.sync.SyncWorker
 import com.fairshare.di.Gemini
 import com.fairshare.di.MlKit
 import com.fairshare.domain.model.Expense
@@ -18,6 +20,7 @@ import com.fairshare.domain.usecase.AssignReceiptItemsUseCase
 import com.fairshare.domain.usecase.ExpandReceiptQuantitiesUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +58,7 @@ class ScanReceiptViewModel @Inject constructor(
     private val assignReceiptItems: AssignReceiptItemsUseCase,
     private val expandReceiptQuantities: ExpandReceiptQuantitiesUseCase,
     private val settings: SettingsRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
@@ -163,6 +167,7 @@ class ScanReceiptViewModel @Inject constructor(
                         items = itemDetails,
                     )
                 )
+                SyncWorker.enqueueOneShot(context, eventId)
                 _state.update { it.copy(isSaving = false) }
                 onSuccess()
             }
