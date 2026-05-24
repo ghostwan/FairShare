@@ -1,6 +1,6 @@
 # FairShare — Multi-device sync design
 
-Status: draft, ready for implementation
+Status: shipped through step L; post-L follow-ups in §10.
 Branch: `share`
 Owner decision (recap): CRDT engine + dual transport (Sneakernet for
 offline / Cloudflare Worker for online), end-to-end encrypted, with
@@ -248,16 +248,52 @@ ops (
 INDEX (event_id, lamport)
 ```
 
-Endpoints:
+Endpoints (actual, see `worker/src/index.ts`):
 
 - `POST /events/{eventId}/ops` — push a batch of `{opId, lamport,
-  deviceId, nonce, ciphertext}`. Idempotent (opId is PK).
-- `GET /events/{eventId}/ops?sinceLamport=N` — pull ops with
-  `lamport > N`. Bounded page size.
+  deviceId, nonce, ciphertext}`. Idempotent (opId is PK). Empty
+  `ops` is allowed and used as a no-op handshake to register the
+  bearer (see §6.4).
+- `GET /events/{eventId}/ops?since=N` — pull ops with `lamport > N`.
+  Bounded page size (500); response includes `nextSince` + `hasMore`.
 
 The Worker performs no decryption and stores no plaintext. Auth is by
 event-scoped HMAC token (derived from the event key) so random people
 can't enumerate events.
+
+#### 6.4 Bearer registration (register-on-first-use)
+
+The Worker has no concept of "create event" — events come into
+existence the first time a device proves it knows the event key by
+sending a valid bearer over `POST /events/{eventId}/ops`. From that
+point on, every subsequent request (push or pull) must present the
+*same* bearer.
+
+This is enforced in `checkBearer` (`worker/src/index.ts`):
+
+- Unknown event + `POST` → register the presented bearer, accept.
+- Unknown event + `GET` → reject with 401 `unknown_event`.
+- Known event + matching bearer → accept.
+- Known event + different bearer → reject with 401 `bad_bearer`.
+
+Client-side (`SyncCoordinator.syncEvent`) implications:
+
+1. **Push always runs before pull.** Pulling first on a freshly
+   joined event would 401, throw, and never reach the push that
+   would have registered the bearer — leading to an infinite
+   WorkManager retry loop. The order is push → pull.
+2. **First sync always POSTs**, even with no local ops to send.
+   `CloudCursorStore.isBearerRegistered(eventId)` persists whether
+   the empty-ops handshake has succeeded; subsequent syncs skip the
+   empty POST when there's nothing to push.
+3. **`unknown_event` on pull is non-fatal.** We treat it as "nothing
+   to pull yet" and let the next sync cycle retry, defending against
+   races where the push hasn't propagated to the D1 read replica.
+
+Net result: a device that joins an event via sneakernet but has not
+emitted any local op will still announce itself to the Worker on the
+next foreground sync, and will receive all cloud ops on the cycle
+after that.
 
 In-app sync runs as a `WorkManager` periodic job + manual pull-to-
 refresh + push on every local op.
@@ -313,18 +349,27 @@ exports.
 Each step ends with `./gradlew :app:testDebugUnitTest` green and a
 commit pushed to `share`.
 
-1. **A** — Operation domain model + sealed payloads (pure Kotlin).
-2. **B** — DeviceId + LamportClock helpers (DataStore-backed).
-3. **C** — `OperationEntity` + `OperationDao` + schema bump.
-4. **D** — Migrate entities to `String` UUID IDs (breaking).
-5. **E** — Refactor `ExpenseDao.upsertWithDetails` to diff-and-apply.
-6. **F** — `OperationApplier` (materializer) + property tests.
-7. **G** — Rewrite the three repositories to go through the applier.
+1. **A** — Operation domain model + sealed payloads (pure Kotlin). ✅
+2. **B** — DeviceId + LamportClock helpers (DataStore-backed). ✅
+3. **C** — `OperationEntity` + `OperationDao` + schema bump. ✅
+4. **D** — Migrate entities to `String` UUID IDs (breaking). ✅
+5. **E** — Refactor `ExpenseDao.upsertWithDetails` to diff-and-apply. ✅
+6. **F** — `OperationApplier` (materializer) + property tests. ✅
+7. **G** — Rewrite the three repositories to go through the applier. ✅
 8. **H** — Sneakernet transport: encoder/decoder, intent filter,
-   "Share changes" UI, "Apply changes" UI, QR.
-9. **I** — Cloudflare Worker (`worker/` dir), D1 schema, wrangler.
-10. **J** — Cloud transport client (OkHttp + AES-GCM), WorkManager.
-11. **K** — `SyncCoordinator` auto-selection + sync status UI.
-12. **L** — Final convergence tests across two simulated devices.
+   "Share changes" UI, "Apply changes" UI, QR. ✅
+9. **I** — Cloudflare Worker (`worker/` dir), D1 schema, wrangler. ✅
+10. **J** — Cloud transport client (OkHttp + AES-GCM), WorkManager. ✅
+11. **K** — `SyncCoordinator` auto-selection + sync status UI. ✅
+12. **L** — Final convergence tests across two simulated devices. ✅
 
-Step A starts next.
+Post-L follow-ups (in flight or planned):
+
+- Bearer register-on-first-use bug fix (push-before-pull + persisted
+  registration flag, see §6.4). ✅
+- Optimistic push from the write-side ViewModels (don't wait for
+  ON_RESUME to propagate a newly-emitted expense). Planned.
+- Settings screen exposing cloud sync status + base URL override.
+  Planned.
+- Worker cursor composite `(lamport, op_id)` to handle the
+  pathological case of > 500 ops sharing the same lamport. Planned.
