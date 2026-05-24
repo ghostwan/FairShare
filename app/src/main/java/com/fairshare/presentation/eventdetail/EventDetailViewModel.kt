@@ -38,7 +38,7 @@ class EventDetailViewModel @Inject constructor(
     private val computeBalances: ComputeBalancesUseCase,
 ) : ViewModel() {
 
-    val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
 
     val state: StateFlow<EventDetailState> = combine(
         eventRepository.observeEvent(eventId),
@@ -57,6 +57,6 @@ class EventDetailViewModel @Inject constructor(
         }
     }
 
-    fun removeParticipant(id: Long) = viewModelScope.launch { participantRepository.delete(id) }
-    fun removeExpense(id: Long) = viewModelScope.launch { expenseRepository.delete(id) }
+    fun removeParticipant(id: String) = viewModelScope.launch { participantRepository.delete(id) }
+    fun removeExpense(id: String) = viewModelScope.launch { expenseRepository.delete(id) }
 }

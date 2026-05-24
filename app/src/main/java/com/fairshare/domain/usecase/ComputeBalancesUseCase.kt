@@ -12,7 +12,7 @@ import com.fairshare.domain.model.Settlement
 class ComputeBalancesUseCase {
 
     fun balances(participants: List<Participant>, expenses: List<Expense>): List<Balance> {
-        val net = mutableMapOf<Long, Long>().withDefault { 0L }
+        val net = mutableMapOf<String, Long>().withDefault { 0L }
         expenses.forEach { e ->
             net[e.payerId] = (net.getValue(e.payerId)) + e.amountCents
             e.shares.forEach { s ->

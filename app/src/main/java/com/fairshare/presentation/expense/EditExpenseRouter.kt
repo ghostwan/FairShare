@@ -50,7 +50,7 @@ class EditExpenseRouterViewModel @Inject constructor(
     expenseRepository: ExpenseRepository,
 ) : ViewModel() {
 
-    private val expenseId: Long = checkNotNull(savedStateHandle[Route.ARG_EXPENSE_ID])
+    private val expenseId: String = checkNotNull(savedStateHandle[Route.ARG_EXPENSE_ID])
 
     private val _kind = MutableStateFlow(ExpenseKind.Loading)
     val kind: StateFlow<ExpenseKind> = _kind.asStateFlow()

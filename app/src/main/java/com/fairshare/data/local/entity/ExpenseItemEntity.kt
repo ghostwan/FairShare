@@ -16,8 +16,8 @@ import androidx.room.PrimaryKey
     indices = [Index("expenseId")],
 )
 data class ExpenseItemEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val expenseId: Long,
+    @PrimaryKey val id: String,
+    val expenseId: String,
     val label: String,
     val priceCents: Long,
     val quantity: Int,
@@ -36,6 +36,6 @@ data class ExpenseItemEntity(
     indices = [Index("itemId"), Index("participantId")],
 )
 data class ExpenseItemAssignmentEntity(
-    val itemId: Long,
-    val participantId: Long,
+    val itemId: String,
+    val participantId: String,
 )

@@ -25,9 +25,9 @@ private enum class Tab(val label: String) { Expenses("Dépenses"), Balances("Sol
 @Composable
 fun EventDetailScreen(
     onBack: () -> Unit,
-    onAddExpense: (Long) -> Unit,
-    onEditExpense: (eventId: Long, expenseId: Long) -> Unit,
-    onScanReceipt: (Long) -> Unit,
+    onAddExpense: (String) -> Unit,
+    onEditExpense: (eventId: String, expenseId: String) -> Unit,
+    onScanReceipt: (String) -> Unit,
     vm: EventDetailViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
@@ -108,8 +108,8 @@ fun EventDetailScreen(
 private fun ExpensesList(
     state: EventDetailState,
     currency: String,
-    onClick: (Long) -> Unit,
-    onDelete: (Long) -> Unit,
+    onClick: (String) -> Unit,
+    onDelete: (String) -> Unit,
 ) {
     if (state.expenses.isEmpty()) {
         EmptyHint("Aucune dépense. Ajoute-en une ou scanne un ticket de caisse.")
@@ -181,7 +181,7 @@ private fun BalancesList(state: EventDetailState, currency: String) {
 }
 
 @Composable
-private fun ParticipantsList(state: EventDetailState, onRemove: (Long) -> Unit) {
+private fun ParticipantsList(state: EventDetailState, onRemove: (String) -> Unit) {
     if (state.participants.isEmpty()) {
         EmptyHint("Aucun participant.")
         return

@@ -35,58 +35,62 @@ data class ExpenseWithDetails(
 interface ExpenseDao {
     @Transaction
     @Query("SELECT * FROM expenses WHERE eventId = :eventId ORDER BY date DESC")
-    fun observeByEvent(eventId: Long): Flow<List<ExpenseWithDetails>>
+    fun observeByEvent(eventId: String): Flow<List<ExpenseWithDetails>>
 
     @Transaction
     @Query("SELECT * FROM expenses WHERE id = :id")
-    suspend fun getById(id: Long): ExpenseWithDetails?
+    suspend fun getById(id: String): ExpenseWithDetails?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertExpense(expense: ExpenseEntity): Long
+    suspend fun insertExpense(expense: ExpenseEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShares(shares: List<ExpenseShareEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertItem(item: ExpenseItemEntity): Long
+    suspend fun insertItem(item: ExpenseItemEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAssignments(assignments: List<ExpenseItemAssignmentEntity>)
 
     @Query("DELETE FROM expense_shares WHERE expenseId = :expenseId")
-    suspend fun deleteSharesFor(expenseId: Long)
+    suspend fun deleteSharesFor(expenseId: String)
 
     @Query("DELETE FROM expense_items WHERE expenseId = :expenseId")
-    suspend fun deleteItemsFor(expenseId: Long)
+    suspend fun deleteItemsFor(expenseId: String)
 
     @Query("DELETE FROM expenses WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 
     /**
      * Upserts an expense together with its shares and (optionally) per-article items.
      * Items and assignments are fully replaced on update.
+     *
+     * The caller is responsible for assigning ids (UUID strings) to the expense,
+     * its shares (implicitly via composite key) and each item. This is required
+     * because the same id must be reused on every replay for the upcoming CRDT
+     * materializer to converge (see DESIGN.md §3 / step F).
      */
     @Transaction
     suspend fun upsertWithDetails(
         expense: ExpenseEntity,
         shares: List<ExpenseShareEntity>,
-        items: List<Pair<ExpenseItemEntity, List<Long>>>,
-    ): Long {
-        val newId = insertExpense(expense)
-        val finalId = if (expense.id == 0L) newId else expense.id
+        items: List<Pair<ExpenseItemEntity, List<String>>>,
+    ) {
+        insertExpense(expense)
 
-        deleteSharesFor(finalId)
-        insertShares(shares.map { it.copy(expenseId = finalId) })
+        deleteSharesFor(expense.id)
+        insertShares(shares.map { it.copy(expenseId = expense.id) })
 
-        deleteItemsFor(finalId)
+        deleteItemsFor(expense.id)
         items.forEachIndexed { idx, (item, participants) ->
-            val itemId = insertItem(item.copy(id = 0L, expenseId = finalId, position = idx))
+            val positioned = item.copy(expenseId = expense.id, position = idx)
+            insertItem(positioned)
             if (participants.isNotEmpty()) {
                 insertAssignments(participants.map { pid ->
-                    ExpenseItemAssignmentEntity(itemId = itemId, participantId = pid)
+                    ExpenseItemAssignmentEntity(itemId = positioned.id, participantId = pid)
                 })
             }
         }
-        return finalId
     }
 }

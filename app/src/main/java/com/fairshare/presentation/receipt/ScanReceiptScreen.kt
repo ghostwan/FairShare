@@ -205,7 +205,7 @@ fun ScanReceiptScreen(
 internal fun ReceiptItemRow(
     item: com.fairshare.domain.model.ReceiptItem,
     participants: List<com.fairshare.domain.model.Participant>,
-    onToggle: (Long) -> Unit,
+    onToggle: (String) -> Unit,
     onChange: (String, Long) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -291,7 +291,7 @@ internal fun PerPersonSummary(
     if (items.isEmpty() || participants.isEmpty()) return
     val totals = remember(items, participants) {
         val allIds = participants.map { it.id }
-        val acc = LinkedHashMap<Long, Long>().apply { allIds.forEach { put(it, 0L) } }
+        val acc = LinkedHashMap<String, Long>().apply { allIds.forEach { put(it, 0L) } }
         items.forEach { item ->
             val assignees = item.assignedTo.toList().ifEmpty { allIds }
             if (assignees.isEmpty()) return@forEach

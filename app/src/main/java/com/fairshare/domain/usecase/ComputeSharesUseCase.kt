@@ -11,7 +11,7 @@ class ComputeSharesUseCase {
 
     operator fun invoke(
         amountCents: Long,
-        participantIds: List<Long>,
+        participantIds: List<String>,
         mode: SplitMode,
         // ratios used for SHARES (e.g. [1,1,2]); exact amounts (cents) for EXACT
         weights: List<Long> = emptyList(),
@@ -26,7 +26,7 @@ class ComputeSharesUseCase {
         }
     }
 
-    private fun splitEqual(total: Long, ids: List<Long>): List<ExpenseShare> {
+    private fun splitEqual(total: Long, ids: List<String>): List<ExpenseShare> {
         val base = total / ids.size
         val remainder = (total - base * ids.size).toInt()
         return ids.mapIndexed { i, id ->
@@ -34,7 +34,7 @@ class ComputeSharesUseCase {
         }
     }
 
-    private fun splitByWeights(total: Long, ids: List<Long>, weights: List<Long>): List<ExpenseShare> {
+    private fun splitByWeights(total: Long, ids: List<String>, weights: List<Long>): List<ExpenseShare> {
         require(weights.size == ids.size) { "Weights must match participants" }
         val sum = weights.sum().coerceAtLeast(1)
         var distributed = 0L

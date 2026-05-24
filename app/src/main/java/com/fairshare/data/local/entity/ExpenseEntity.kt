@@ -16,11 +16,11 @@ import androidx.room.PrimaryKey
     indices = [Index("eventId"), Index("payerId")],
 )
 data class ExpenseEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val eventId: Long,
+    @PrimaryKey val id: String,
+    val eventId: String,
     val title: String,
     val amountCents: Long,
-    val payerId: Long,
+    val payerId: String,
     val date: Long,
 )
 
@@ -36,7 +36,7 @@ data class ExpenseEntity(
     indices = [Index("expenseId"), Index("participantId")],
 )
 data class ExpenseShareEntity(
-    val expenseId: Long,
-    val participantId: Long,
+    val expenseId: String,
+    val participantId: String,
     val amountCents: Long,
 )

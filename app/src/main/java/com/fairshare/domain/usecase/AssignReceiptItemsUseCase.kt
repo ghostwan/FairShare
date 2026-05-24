@@ -12,9 +12,9 @@ class AssignReceiptItemsUseCase {
 
     operator fun invoke(
         items: List<ReceiptItem>,
-        allParticipantIds: List<Long>,
+        allParticipantIds: List<String>,
     ): List<ExpenseShare> {
-        val totals = mutableMapOf<Long, Long>().withDefault { 0L }
+        val totals = mutableMapOf<String, Long>().withDefault { 0L }
         items.forEach { item ->
             val assignees = item.assignedTo.toList().ifEmpty { allParticipantIds }
             if (assignees.isEmpty()) return@forEach

@@ -28,7 +28,7 @@ fun FairShareNavGraph() {
         }
         composable(
             Route.EventDetail.path,
-            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType }),
+            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
         ) {
             EventDetailScreen(
                 onBack = { nav.popBackStack() },
@@ -41,22 +41,22 @@ fun FairShareNavGraph() {
         }
         composable(
             Route.AddExpense.path,
-            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType }),
+            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
         ) {
             AddExpenseScreen(onDone = { nav.popBackStack() })
         }
         composable(
             Route.EditExpense.path,
             arguments = listOf(
-                navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType },
-                navArgument(Route.ARG_EXPENSE_ID) { type = NavType.LongType },
+                navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType },
+                navArgument(Route.ARG_EXPENSE_ID) { type = NavType.StringType },
             ),
         ) {
             EditExpenseRouter(onDone = { nav.popBackStack() })
         }
         composable(
             Route.ScanReceipt.path,
-            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.LongType }),
+            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
         ) {
             ScanReceiptScreen(onDone = { nav.popBackStack() })
         }

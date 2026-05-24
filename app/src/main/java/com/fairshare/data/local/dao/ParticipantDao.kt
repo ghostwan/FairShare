@@ -10,14 +10,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ParticipantDao {
     @Query("SELECT * FROM participants WHERE eventId = :eventId ORDER BY name COLLATE NOCASE")
-    fun observeByEvent(eventId: Long): Flow<List<ParticipantEntity>>
+    fun observeByEvent(eventId: String): Flow<List<ParticipantEntity>>
 
     @Query("SELECT * FROM participants WHERE eventId = :eventId ORDER BY name COLLATE NOCASE")
-    suspend fun getByEvent(eventId: Long): List<ParticipantEntity>
+    suspend fun getByEvent(eventId: String): List<ParticipantEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(participant: ParticipantEntity): Long
+    suspend fun insert(participant: ParticipantEntity)
 
     @Query("DELETE FROM participants WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 }

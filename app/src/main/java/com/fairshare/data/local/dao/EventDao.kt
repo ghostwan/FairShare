@@ -14,14 +14,14 @@ interface EventDao {
     fun observeAll(): Flow<List<EventEntity>>
 
     @Query("SELECT * FROM events WHERE id = :id")
-    fun observeById(id: Long): Flow<EventEntity?>
+    fun observeById(id: String): Flow<EventEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(event: EventEntity): Long
+    suspend fun insert(event: EventEntity)
 
     @Update
     suspend fun update(event: EventEntity)
 
     @Query("DELETE FROM events WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 }

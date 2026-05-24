@@ -5,8 +5,9 @@ import kotlinx.coroutines.flow.Flow
 
 interface EventRepository {
     fun observeEvents(): Flow<List<Event>>
-    fun observeEvent(id: Long): Flow<Event?>
-    suspend fun create(event: Event): Long
+    fun observeEvent(id: String): Flow<Event?>
+    /** Returns the id (generated if [Event.id] is blank). */
+    suspend fun create(event: Event): String
     suspend fun update(event: Event)
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 }

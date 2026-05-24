@@ -18,7 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventsScreen(
-    onOpenEvent: (Long) -> Unit,
+    onOpenEvent: (String) -> Unit,
     onOpenSettings: () -> Unit,
     vm: EventsViewModel = hiltViewModel(),
 ) {

@@ -9,5 +9,5 @@ data class ReceiptItem(
     /** Number of units detected on the row (e.g. "2 x Bière" → 2). Default 1. */
     val quantity: Int = 1,
     /** Participant ids assigned to this item (split equally between them). */
-    val assignedTo: Set<Long> = emptySet(),
+    val assignedTo: Set<String> = emptySet(),
 )

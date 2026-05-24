@@ -36,7 +36,7 @@ class EventsViewModel @Inject constructor(
         }
     }
 
-    fun deleteEvent(id: Long) {
+    fun deleteEvent(id: String) {
         viewModelScope.launch { eventRepository.delete(id) }
     }
 }

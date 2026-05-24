@@ -24,7 +24,7 @@ import javax.inject.Inject
 
 data class EditReceiptState(
     val title: String = "",
-    val payerId: Long? = null,
+    val payerId: String? = null,
     val items: List<ReceiptItem> = emptyList(),
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -40,8 +40,8 @@ class EditReceiptViewModel @Inject constructor(
     private val assignReceiptItems: AssignReceiptItemsUseCase,
 ) : ViewModel() {
 
-    private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
-    private val expenseId: Long = checkNotNull(savedStateHandle[Route.ARG_EXPENSE_ID])
+    private val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    private val expenseId: String = checkNotNull(savedStateHandle[Route.ARG_EXPENSE_ID])
 
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
@@ -69,9 +69,9 @@ class EditReceiptViewModel @Inject constructor(
     }
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
-    fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
+    fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
 
-    fun toggleAssignment(itemId: String, participantId: Long) = _state.update { s ->
+    fun toggleAssignment(itemId: String, participantId: String) = _state.update { s ->
         s.copy(items = s.items.map {
             if (it.id != itemId) it else it.copy(
                 assignedTo = if (participantId in it.assignedTo) it.assignedTo - participantId
@@ -141,7 +141,7 @@ class EditReceiptViewModel @Inject constructor(
 }
 
 private fun ExpenseItem.toReceiptItem() = ReceiptItem(
-    id = if (id != 0L) "db-$id" else UUID.randomUUID().toString(),
+    id = id.ifBlank { UUID.randomUUID().toString() },
     label = label,
     priceCents = priceCents,
     quantity = quantity,

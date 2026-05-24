@@ -24,9 +24,9 @@ import javax.inject.Inject
 data class AddExpenseState(
     val title: String = "",
     val amountText: String = "",
-    val payerId: Long? = null,
+    val payerId: String? = null,
     val mode: SplitMode = SplitMode.EQUAL,
-    val selectedIds: Set<Long> = emptySet(),
+    val selectedIds: Set<String> = emptySet(),
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val isEditMode: Boolean = false,
@@ -41,8 +41,8 @@ class AddExpenseViewModel @Inject constructor(
     private val computeShares: ComputeSharesUseCase,
 ) : ViewModel() {
 
-    private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
-    private val editingExpenseId: Long? = savedStateHandle.get<Long>(Route.ARG_EXPENSE_ID)
+    private val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    private val editingExpenseId: String? = savedStateHandle.get<String>(Route.ARG_EXPENSE_ID)
 
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
@@ -75,9 +75,9 @@ class AddExpenseViewModel @Inject constructor(
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setAmount(v: String) = _state.update { it.copy(amountText = v) }
-    fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
+    fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
     fun setMode(m: SplitMode) = _state.update { it.copy(mode = m) }
-    fun togglePayee(id: Long) = _state.update {
+    fun togglePayee(id: String) = _state.update {
         it.copy(selectedIds = if (id in it.selectedIds) it.selectedIds - id else it.selectedIds + id)
     }
     fun selectAll() = _state.update { it.copy(selectedIds = participants.value.map { p -> p.id }.toSet()) }
@@ -96,7 +96,7 @@ class AddExpenseViewModel @Inject constructor(
                 _state.update { it.copy(isSaving = true, error = null) }
                 val shares = computeShares(amount, payees, SplitMode.EQUAL)
                 val expense = Expense(
-                    id = editingExpenseId ?: 0L,
+                    id = editingExpenseId ?: "",
                     eventId = eventId, title = s.title.trim(),
                     amountCents = amount, payerId = payer, shares = shares,
                 )

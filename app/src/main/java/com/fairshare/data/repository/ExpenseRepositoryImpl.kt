@@ -11,28 +11,30 @@ import com.fairshare.domain.model.ExpenseShare
 import com.fairshare.domain.repository.ExpenseRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 import javax.inject.Inject
 
 class ExpenseRepositoryImpl @Inject constructor(
     private val dao: ExpenseDao,
 ) : ExpenseRepository {
 
-    override fun observeByEvent(eventId: Long): Flow<List<Expense>> =
+    override fun observeByEvent(eventId: String): Flow<List<Expense>> =
         dao.observeByEvent(eventId).map { list -> list.map { it.toDomain() } }
 
-    override suspend fun get(id: Long): Expense? = dao.getById(id)?.toDomain()
+    override suspend fun get(id: String): Expense? = dao.getById(id)?.toDomain()
 
-    override suspend fun add(expense: Expense): Long = upsert(expense)
+    override suspend fun add(expense: Expense): String = upsert(expense)
     override suspend fun update(expense: Expense) { upsert(expense) }
 
-    override suspend fun delete(id: Long) = dao.delete(id)
+    override suspend fun delete(id: String) = dao.delete(id)
 
-    private suspend fun upsert(expense: Expense): Long {
+    private suspend fun upsert(expense: Expense): String {
+        val expenseId = expense.id.ifBlank { UUID.randomUUID().toString() }
         val items = expense.items.map { item ->
-            // expenseId is rewritten by the DAO transaction once the row id is known.
+            val itemId = item.id.ifBlank { UUID.randomUUID().toString() }
             val entity = ExpenseItemEntity(
-                id = 0L,
-                expenseId = expense.id,
+                id = itemId,
+                expenseId = expenseId,
                 label = item.label,
                 priceCents = item.priceCents,
                 quantity = item.quantity,
@@ -40,11 +42,12 @@ class ExpenseRepositoryImpl @Inject constructor(
             )
             entity to item.assignedTo.toList()
         }
-        return dao.upsertWithDetails(
-            expense.toEntity(),
-            expense.shares.map { it.toEntity(expense.id) },
+        dao.upsertWithDetails(
+            expense.copy(id = expenseId).toEntity(),
+            expense.shares.map { it.toEntity(expenseId) },
             items,
         )
+        return expenseId
     }
 }
 
@@ -71,5 +74,5 @@ private fun ExpenseWithDetails.toDomain(): Expense {
 }
 
 private fun Expense.toEntity() = ExpenseEntity(id, eventId, title, amountCents, payerId, date)
-private fun ExpenseShare.toEntity(expenseId: Long) =
+private fun ExpenseShare.toEntity(expenseId: String) =
     ExpenseShareEntity(expenseId, participantId, amountCents)

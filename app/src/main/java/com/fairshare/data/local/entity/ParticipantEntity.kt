@@ -16,7 +16,7 @@ import androidx.room.PrimaryKey
     indices = [Index("eventId")],
 )
 data class ParticipantEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val eventId: Long,
+    @PrimaryKey val id: String,
+    val eventId: String,
     val name: String,
 )

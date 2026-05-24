@@ -32,7 +32,7 @@ import javax.inject.Inject
 
 data class ScanReceiptState(
     val title: String = "Ticket de caisse",
-    val payerId: Long? = null,
+    val payerId: String? = null,
     val items: List<ReceiptItem> = emptyList(),
     val isScanning: Boolean = false,
     val isSaving: Boolean = false,
@@ -57,7 +57,7 @@ class ScanReceiptViewModel @Inject constructor(
     private val settings: SettingsRepository,
 ) : ViewModel() {
 
-    private val eventId: Long = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
+    private val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
 
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
@@ -79,7 +79,7 @@ class ScanReceiptViewModel @Inject constructor(
     val state: StateFlow<ScanReceiptState> = _state.asStateFlow()
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
-    fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
+    fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
 
     fun scan(uri: Uri) = runParser(uri, mlKitParser)
 
@@ -112,7 +112,7 @@ class ScanReceiptViewModel @Inject constructor(
         }
     }
 
-    fun toggleAssignment(itemId: String, participantId: Long) = _state.update { s ->
+    fun toggleAssignment(itemId: String, participantId: String) = _state.update { s ->
         s.copy(items = s.items.map {
             if (it.id != itemId) it else it.copy(
                 assignedTo = if (participantId in it.assignedTo) it.assignedTo - participantId
