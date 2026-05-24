@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -40,6 +41,7 @@ fun ScanReceiptScreen(
     val context = LocalContext.current
     val state by vm.state.collectAsState()
     val participants by vm.participants.collectAsState()
+    val hasGeminiKey by vm.hasGeminiKey.collectAsState()
 
     LaunchedEffect(participants) {
         if (state.payerId == null && participants.isNotEmpty()) vm.setPayer(participants.first().id)
@@ -169,6 +171,20 @@ fun ScanReceiptScreen(
                     }
                     item {
                         PerPersonSummary(items = state.items, participants = participants)
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { vm.reparseWithGemini() },
+                            enabled = hasGeminiKey && !state.isScanning && state.lastImageUri != null,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (hasGeminiKey) "Réessayer avec IA"
+                                else "Réessayer avec IA (clé API requise)"
+                            )
+                        }
                     }
                 }
             }

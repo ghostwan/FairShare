@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fairshare.di.Gemini
+import com.fairshare.di.MlKit
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.ExpenseItem
 import com.fairshare.domain.model.Participant
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,13 +37,20 @@ data class ScanReceiptState(
     val isScanning: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,
+    /**
+     * URI of the last image successfully sent to a parser. Kept around so the user
+     * can re-parse the same image with the Gemini fallback if ML Kit's output
+     * was poor — without re-taking the photo.
+     */
+    val lastImageUri: Uri? = null,
 )
 
 @HiltViewModel
 class ScanReceiptViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     participantRepository: ParticipantRepository,
-    private val parser: ReceiptParser,
+    @MlKit private val mlKitParser: ReceiptParser,
+    @Gemini private val geminiParser: ReceiptParser,
     private val expenseRepository: ExpenseRepository,
     private val assignReceiptItems: AssignReceiptItemsUseCase,
     private val expandReceiptQuantities: ExpandReceiptQuantitiesUseCase,
@@ -57,15 +67,38 @@ class ScanReceiptViewModel @Inject constructor(
         settings.expandQuantities
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    /**
+     * Exposed so the UI can disable the "Réessayer avec IA" action when no key is
+     * configured (BuildConfig default empty + no user override in Settings).
+     */
+    val hasGeminiKey: StateFlow<Boolean> =
+        settings.geminiApiKey.map { it.isNotBlank() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private val _state = MutableStateFlow(ScanReceiptState())
     val state: StateFlow<ScanReceiptState> = _state.asStateFlow()
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setPayer(id: Long) = _state.update { it.copy(payerId = id) }
 
-    fun scan(uri: Uri) {
+    fun scan(uri: Uri) = runParser(uri, mlKitParser)
+
+    /**
+     * Re-runs the parsing pipeline on the last scanned image using the Gemini AI
+     * fallback. Existing items are *replaced* by Gemini's output. No-op if no
+     * image was scanned yet or no API key is configured.
+     */
+    fun reparseWithGemini() {
+        val uri = state.value.lastImageUri ?: run {
+            _state.update { it.copy(error = "Aucune image à ré-analyser") }
+            return
+        }
+        runParser(uri, geminiParser)
+    }
+
+    private fun runParser(uri: Uri, parser: ReceiptParser) {
         viewModelScope.launch {
-            _state.update { it.copy(isScanning = true, error = null) }
+            _state.update { it.copy(isScanning = true, error = null, lastImageUri = uri) }
             try {
                 val parsed = parser.parse(uri)
                 // Read the current setting *now* — cannot rely on the cold StateFlow's

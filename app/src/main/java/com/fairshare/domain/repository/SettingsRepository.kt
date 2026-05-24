@@ -12,4 +12,20 @@ interface SettingsRepository {
      */
     val expandQuantities: Flow<Boolean>
     suspend fun setExpandQuantities(value: Boolean)
+
+    /**
+     * Gemini API key used by the AI fallback parser. Empty string means "no key
+     * configured" — the UI uses this to disable the "Réessayer avec IA" action.
+     * Defaults to the build-time value injected from `local.properties` via
+     * `BuildConfig.GEMINI_API_KEY`.
+     */
+    val geminiApiKey: Flow<String>
+    suspend fun setGeminiApiKey(value: String)
+
+    /**
+     * Gemini model id (e.g. `gemini-2.5-flash`). Defaults to
+     * `BuildConfig.GEMINI_MODEL`.
+     */
+    val geminiModel: Flow<String>
+    suspend fun setGeminiModel(value: String)
 }
