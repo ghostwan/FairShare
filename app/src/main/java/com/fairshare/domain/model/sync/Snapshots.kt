@@ -1,0 +1,63 @@
+package com.fairshare.domain.model.sync
+
+import kotlinx.serialization.Serializable
+
+/**
+ * Wire-format snapshot of an [com.fairshare.domain.model.Event].
+ *
+ * Snapshots are decoupled from the in-app domain models so that the on-wire
+ * representation stays stable even when the UI-facing model evolves. All
+ * identifiers are [String] UUIDs (see DESIGN.md §2.1).
+ */
+@Serializable
+data class EventSnapshot(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val currency: String = "EUR",
+    val createdAt: Long,
+)
+
+/** Wire-format snapshot of a [com.fairshare.domain.model.Participant]. */
+@Serializable
+data class ParticipantSnapshot(
+    val id: String,
+    val eventId: String,
+    val name: String,
+)
+
+/**
+ * Wire-format snapshot of an [com.fairshare.domain.model.Expense].
+ *
+ * The whole tree (shares + items + assignments) is included because the chosen
+ * CRDT granularity is per-Expense (see DESIGN.md §3.2). Concurrent edits on the
+ * same expense resolve via LWW at this level.
+ */
+@Serializable
+data class ExpenseSnapshot(
+    val id: String,
+    val eventId: String,
+    val title: String,
+    val amountCents: Long,
+    val payerId: String,
+    val date: Long,
+    val shares: List<ExpenseShareSnapshot> = emptyList(),
+    val items: List<ExpenseItemSnapshot> = emptyList(),
+)
+
+@Serializable
+data class ExpenseShareSnapshot(
+    val id: String,
+    val participantId: String,
+    val amountCents: Long,
+)
+
+@Serializable
+data class ExpenseItemSnapshot(
+    val id: String,
+    val label: String,
+    val priceCents: Long,
+    val quantity: Int = 1,
+    /** Participant ids this item is assigned to. */
+    val assignedTo: Set<String> = emptySet(),
+)
