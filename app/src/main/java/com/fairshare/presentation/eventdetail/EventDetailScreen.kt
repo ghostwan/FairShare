@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -18,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.fairshare.presentation.common.centsToString
 
 private enum class Tab(val label: String) { Expenses("Dépenses"), Balances("Soldes"), Participants("Personnes") }
@@ -33,9 +36,14 @@ fun EventDetailScreen(
     vm: EventDetailViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
+    val isRefreshing by vm.isRefreshing.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.Expenses) }
     var showAddPerson by rememberSaveable { mutableStateOf(false) }
     val currency = state.event?.currency ?: "EUR"
+
+    // Refresh from cloud every time the screen is resumed (back-nav,
+    // process restore, etc). Cheap when there's nothing to do.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
     Scaffold(
         topBar = {
@@ -72,25 +80,31 @@ fun EventDetailScreen(
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = tab.ordinal) {
-                Tab.entries.forEach { t ->
-                    androidx.compose.material3.Tab(
-                        selected = tab == t,
-                        onClick = { tab = t },
-                        text = { Text(t.label) },
-                    )
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                TabRow(selectedTabIndex = tab.ordinal) {
+                    Tab.entries.forEach { t ->
+                        androidx.compose.material3.Tab(
+                            selected = tab == t,
+                            onClick = { tab = t },
+                            text = { Text(t.label) },
+                        )
+                    }
                 }
-            }
-            when (tab) {
-                Tab.Expenses -> ExpensesList(
-                    state = state,
-                    currency = currency,
-                    onClick = { id -> onEditExpense(vm.eventId, id) },
-                    onDelete = vm::removeExpense,
-                )
-                Tab.Balances -> BalancesList(state, currency)
-                Tab.Participants -> ParticipantsList(state, onRemove = vm::removeParticipant)
+                when (tab) {
+                    Tab.Expenses -> ExpensesList(
+                        state = state,
+                        currency = currency,
+                        onClick = { id -> onEditExpense(vm.eventId, id) },
+                        onDelete = vm::removeExpense,
+                    )
+                    Tab.Balances -> BalancesList(state, currency)
+                    Tab.Participants -> ParticipantsList(state, onRemove = vm::removeParticipant)
+                }
             }
         }
     }

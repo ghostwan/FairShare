@@ -11,12 +11,15 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.fairshare.domain.model.Event
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -28,8 +31,13 @@ fun EventsScreen(
     vm: EventsViewModel = hiltViewModel(),
 ) {
     val events by vm.events.collectAsState()
+    val isRefreshing by vm.isRefreshing.collectAsState()
     var showCreate by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Event?>(null) }
+
+    // Trigger a sync every time the screen comes back to the foreground.
+    // Cheap when nothing changed (no ops to push, empty pull page).
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
     Scaffold(
         topBar = {
@@ -53,34 +61,40 @@ fun EventsScreen(
             )
         },
     ) { padding ->
-        if (events.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Groups, null, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Pas encore d'événement", style = MaterialTheme.typography.titleMedium)
-                    Text("Crée ton premier voyage ou repas partagé.", style = MaterialTheme.typography.bodyMedium)
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            if (events.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Groups, null, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Pas encore d'événement", style = MaterialTheme.typography.titleMedium)
+                        Text("Crée ton premier voyage ou repas partagé.", style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(events, key = { it.id }) { e ->
-                    ElevatedCard(
-                        modifier = Modifier.combinedClickable(
-                            onClick = { onOpenEvent(e.id) },
-                            onLongClick = { pendingDelete = e },
-                        ),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(e.name, style = MaterialTheme.typography.titleMedium)
-                            if (!e.description.isNullOrBlank()) {
-                                Text(e.description, style = MaterialTheme.typography.bodyMedium)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(events, key = { it.id }) { e ->
+                        ElevatedCard(
+                            modifier = Modifier.combinedClickable(
+                                onClick = { onOpenEvent(e.id) },
+                                onLongClick = { pendingDelete = e },
+                            ),
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(e.name, style = MaterialTheme.typography.titleMedium)
+                                if (!e.description.isNullOrBlank()) {
+                                    Text(e.description, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Text(e.currency, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             }
-                            Text(e.currency, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
