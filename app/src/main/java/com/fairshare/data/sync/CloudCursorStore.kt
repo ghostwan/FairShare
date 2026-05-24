@@ -1,6 +1,7 @@
 package com.fairshare.data.sync
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -36,8 +37,24 @@ class CloudCursorStore @Inject constructor(
     private fun keyFor(eventId: String) =
         longPreferencesKey("cloud_push_cursor_$eventId")
 
+    private fun bearerKeyFor(eventId: String) =
+        booleanPreferencesKey("cloud_bearer_registered_$eventId")
+
     suspend fun pushCursor(eventId: String): Long =
         context.cloudCursorDataStore.data.first()[keyFor(eventId)] ?: 0L
+
+    /**
+     * True once a successful POST (push) has registered our bearer
+     * with the Worker. Until then, GET (pull) returns 401
+     * `unknown_event` because the Worker uses a register-on-first-use
+     * authorization scheme (see `worker/src/index.ts` `checkBearer`).
+     */
+    suspend fun isBearerRegistered(eventId: String): Boolean =
+        context.cloudCursorDataStore.data.first()[bearerKeyFor(eventId)] ?: false
+
+    suspend fun markBearerRegistered(eventId: String) {
+        context.cloudCursorDataStore.edit { it[bearerKeyFor(eventId)] = true }
+    }
 
     /**
      * Advances the cursor to `max(current, value)`. Guards against an
@@ -54,6 +71,9 @@ class CloudCursorStore @Inject constructor(
 
     /** For "remove from this device" flows: drop cursor state. */
     suspend fun clear(eventId: String) {
-        context.cloudCursorDataStore.edit { it.remove(keyFor(eventId)) }
+        context.cloudCursorDataStore.edit {
+            it.remove(keyFor(eventId))
+            it.remove(bearerKeyFor(eventId))
+        }
     }
 }

@@ -93,8 +93,14 @@ class SyncCoordinator @Inject constructor(
             val bearer = SyncCrypto.computeWorkerBearer(eventKey, eventId)
             val cipherKey = SyncCrypto.deriveCloudCipherKey(eventKey)
 
-            val (pulled, skipped) = pullCycle(eventId, bearer, cipherKey)
+            // Push first, then pull. The Worker uses a
+            // register-on-first-use bearer scheme: a GET on an event
+            // that never received a POST returns 401 `unknown_event`.
+            // Always pushing first guarantees the bearer is registered
+            // before we attempt to pull, even on a freshly-joined
+            // event that has no local ops yet.
             val pushed = pushCycle(eventId, bearer, cipherKey)
+            val (pulled, skipped) = pullCycle(eventId, bearer, cipherKey)
             SyncReport(eventId, pulled, pushed, skipped)
         }
     }
@@ -121,7 +127,22 @@ class SyncCoordinator @Inject constructor(
         // we just applied (the Worker requires strict `lamport > since`).
         while (true) {
             val since = operationDao.maxLamportByOrigin(eventId, OpOrigin.CLOUD.name) ?: 0L
-            val page = cloud.pull(eventId, bearer, since).getOrElse { throw it }
+            val pullResult = cloud.pull(eventId, bearer, since)
+            val page = pullResult.getOrElse { err ->
+                // Defense in depth: if the Worker still thinks our
+                // bearer is unknown (push race, or a transient
+                // failure between the push and this pull), treat it
+                // as "nothing to pull yet" rather than aborting the
+                // whole sync cycle. The next sync will retry.
+                if (err.message?.contains("unknown_event") == true) {
+                    Log.i(
+                        "SyncCoordinator",
+                        "Pull for $eventId returned unknown_event; deferring to next sync",
+                    )
+                    return pulled to skipped
+                }
+                throw err
+            }
             if (page.ops.isEmpty()) break
 
             val decoded = mutableListOf<Operation>()
@@ -154,7 +175,6 @@ class SyncCoordinator @Inject constructor(
     ): Int {
         val cursor = cursorStore.pushCursor(eventId)
         val candidates = operationDao.forEventSince(eventId, cursor)
-        if (candidates.isEmpty()) return 0
 
         // Only forward ops emitted on this device (LOCAL) or received
         // out-of-band (SNEAKERNET). CLOUD-origin ops already live on
@@ -162,15 +182,28 @@ class SyncCoordinator @Inject constructor(
         val toPush = candidates
             .filter { it.origin == OpOrigin.LOCAL.name || it.origin == OpOrigin.SNEAKERNET.name }
             .mapNotNull { entity -> entity.toOperationOrNull()?.let { entity to it } }
+
+        val alreadyRegistered = cursorStore.isBearerRegistered(eventId)
         if (toPush.isEmpty()) {
+            // Even with nothing to send, we may still need to
+            // register our bearer with the Worker so subsequent pulls
+            // are authorized. An empty-ops POST is the documented way
+            // to do that (see `worker/src/index.ts` `handlePush`).
+            if (!alreadyRegistered) {
+                cloud.push(eventId, bearer, emptyList()).getOrElse { throw it }
+                cursorStore.markBearerRegistered(eventId)
+            }
             // Still advance the cursor past any CLOUD-only ops so we
             // don't re-scan them on every cycle.
-            cursorStore.advancePushCursor(eventId, candidates.maxOf { it.lamport })
+            if (candidates.isNotEmpty()) {
+                cursorStore.advancePushCursor(eventId, candidates.maxOf { it.lamport })
+            }
             return 0
         }
 
         val encrypted = toPush.map { (_, op) -> CloudOpCodec.encrypt(op, cipherKey) }
         cloud.push(eventId, bearer, encrypted).getOrElse { throw it }
+        if (!alreadyRegistered) cursorStore.markBearerRegistered(eventId)
 
         val highest = candidates.maxOf { it.lamport }
         cursorStore.advancePushCursor(eventId, highest)
