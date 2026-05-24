@@ -112,9 +112,22 @@ class OperationApplier @Inject constructor(
         //    full event log (Room is the source of truth — previously
         //    persisted ops may now lose to a newly arrived one with a
         //    higher lamport).
+        //
+        //    Order matters: PARTICIPANT and EXPENSE rows carry foreign
+        //    keys to EVENT (and EXPENSE shares/items to PARTICIPANT), so
+        //    a single JOIN batch containing the initial EventUpsert +
+        //    ParticipantUpserts must materialize the event row first or
+        //    Room throws a FOREIGN KEY constraint failure.
         val fullLog = operationDao.forEvent(eventId).mapNotNull { it.toDomainOrNull() }
         val touched = ops.map { it.payload.entityKind to it.payload.entityId }.toSet()
-        for ((kind, id) in touched) {
+        val ordered = touched.sortedBy { (kind, _) ->
+            when (kind) {
+                EntityKind.EVENT -> 0
+                EntityKind.PARTICIPANT -> 1
+                EntityKind.EXPENSE -> 2
+            }
+        }
+        for ((kind, id) in ordered) {
             materialize(eventId, kind, id, fullLog)
         }
 
