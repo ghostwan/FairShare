@@ -174,6 +174,11 @@ class OperationApplier @Inject constructor(
                     participantDao.delete(entityId)
                 } else {
                     val snap = (winningPayload as OpPayload.ParticipantUpsert).participant
+                    // The parent event may have lost LWW to a local EventDelete
+                    // tombstone with a higher lamport (e.g., the user deleted
+                    // the event locally and is now re-importing seed ops).
+                    // Without this guard, Room throws FOREIGN KEY failed.
+                    if (eventDao.getById(snap.eventId) == null) return
                     participantDao.insert(
                         ParticipantEntity(
                             id = snap.id,
@@ -189,6 +194,8 @@ class OperationApplier @Inject constructor(
                     expenseDao.delete(entityId)
                 } else {
                     val snap = (winningPayload as OpPayload.ExpenseUpsert).expense
+                    // Same parent-absence guard as PARTICIPANT above.
+                    if (eventDao.getById(snap.eventId) == null) return
                     val entity = ExpenseEntity(
                         id = snap.id,
                         eventId = snap.eventId,

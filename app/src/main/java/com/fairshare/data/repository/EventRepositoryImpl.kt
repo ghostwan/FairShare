@@ -1,6 +1,7 @@
 package com.fairshare.data.repository
 
 import com.fairshare.data.local.dao.EventDao
+import com.fairshare.data.local.dao.OperationDao
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.sync.OperationApplier
 import com.fairshare.domain.model.Event
@@ -34,6 +35,7 @@ import javax.inject.Inject
  */
 class EventRepositoryImpl @Inject constructor(
     private val dao: EventDao,
+    private val operationDao: OperationDao,
     private val applier: OperationApplier,
 ) : EventRepository {
 
@@ -74,10 +76,19 @@ class EventRepositoryImpl @Inject constructor(
     }
 
     override suspend fun delete(id: String) {
-        applier.applyLocal(
-            eventId = id,
-            payload = OpPayload.EventDelete(eventId = id),
-        )
+        // Local-only "remove from this device": we intentionally do NOT
+        // emit an EventDelete op. Emitting a tombstone would mean that
+        // re-importing the same event from a peer would silently lose to
+        // the local delete via LWW (the tombstone's lamport is higher),
+        // which is the opposite of what the user expects when they remove
+        // a copy from a single device and want a peer to be able to
+        // re-share it.
+        //
+        // We hard-purge both the materialized rows (via FK CASCADE) and
+        // the op log for this event so a subsequent JOIN re-materializes
+        // cleanly.
+        operationDao.deleteAllForEvent(id)
+        dao.delete(id)
     }
 
     companion object {

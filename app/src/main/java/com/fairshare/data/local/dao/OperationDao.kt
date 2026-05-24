@@ -41,4 +41,13 @@ interface OperationDao {
 
     @Query("UPDATE operations SET applied = 1 WHERE op_id IN (:opIds)")
     suspend fun markApplied(opIds: List<String>)
+
+    /**
+     * Hard-removes every op for a given event. Used by the local-only
+     * "remove from this device" action so that a subsequent re-import
+     * (sneakernet or cloud) starts from a clean slate without losing to
+     * an EventDelete tombstone via LWW.
+     */
+    @Query("DELETE FROM operations WHERE event_id = :eventId")
+    suspend fun deleteAllForEvent(eventId: String)
 }
