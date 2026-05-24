@@ -6,9 +6,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "fairshare-sync-db"
-# database_id is filled in after `wrangler d1 create fairshare-sync-db`.
-# Keep the placeholder so `wrangler dev --local` works against a local SQLite.
-database_id = "REPLACE_WITH_REAL_D1_ID"
+database_id = "eac66b52-6aa3-4049-9e2d-feade97452b2"
 
 [vars]
 # Maximum number of operations returned by a single GET /ops?since= page.
