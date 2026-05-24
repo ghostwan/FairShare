@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Monochrome variant of the launcher foreground used by Android 13+
+    themed icons. Same geometry as ic_launcher_foreground but every
+    visible shape is rendered in solid white; the system tints it
+    according to the user's wallpaper-derived palette.
+
+    Areas that were "background-green" in the colour variant become
+    transparent (path omitted) so the themed tint shows through.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Coin outline: a ring (filled disc minus inner disc would need
+         clip-path; instead we draw the disc and overlay the split). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 a26,26 0 1 0 0,52 a26,26 0 1 0 0,-52 Z M54,32 a22,22 0 1 1 0,44 a22,22 0 1 1 0,-44 Z" />
+
+    <!-- Diagonal divider crossing the coin. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,72 L70,38 L72,40 L38,74 Z" />
+
+    <!-- Top-right share chevron. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M82,24 L82,34 L78,34 L78,28 L72,28 L72,24 Z" />
+
+    <!-- Bottom-left share chevron. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,84 L26,74 L30,74 L30,80 L36,80 L36,84 Z" />
+</vector>

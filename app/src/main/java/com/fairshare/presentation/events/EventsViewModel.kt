@@ -9,6 +9,7 @@ import com.fairshare.domain.model.Event
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ParticipantRepository
+import com.fairshare.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -28,12 +29,19 @@ class EventsViewModel @Inject constructor(
     private val eventRepository: EventRepository,
     private val participantRepository: ParticipantRepository,
     private val syncCoordinator: SyncCoordinator,
+    private val settings: SettingsRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
-    val events: StateFlow<List<Event>> =
+    /**
+     * Nullable initial value so the screen can distinguish "still
+     * loading" (events == null) from "loaded but empty" (events ==
+     * emptyList). Prevents the empty-state placeholder from flashing
+     * during the brief window before the first Room emission.
+     */
+    val events: StateFlow<List<Event>?> =
         eventRepository.observeEvents()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -50,6 +58,9 @@ class EventsViewModel @Inject constructor(
     fun resumePolling() {
         if (pollJob?.isActive == true) return
         pollJob = viewModelScope.launch {
+            // Respect the auto-refresh setting: if disabled, the screen
+            // is only refreshed via manual pull-to-refresh.
+            if (!settings.autoRefreshEnabled.first()) return@launch
             silentRefresh()
             while (isActive) {
                 delay(POLL_INTERVAL_MS)

@@ -53,6 +53,10 @@ class SettingsViewModel @Inject constructor(
                 SettingsRepository.DEFAULT_CLOUD_BASE_URL,
             )
 
+    val autoRefreshEnabled: StateFlow<Boolean> =
+        settings.autoRefreshEnabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     /** Convenience for the "Reset" button. */
     val defaultCloudBaseUrl: String = SettingsRepository.DEFAULT_CLOUD_BASE_URL
 
@@ -73,6 +77,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setCloudBaseUrl(value: String) {
         viewModelScope.launch { settings.setCloudBaseUrl(value) }
+    }
+
+    fun setAutoRefreshEnabled(value: Boolean) {
+        viewModelScope.launch { settings.setAutoRefreshEnabled(value) }
     }
 
     fun resetCloudBaseUrl() = setCloudBaseUrl(defaultCloudBaseUrl)

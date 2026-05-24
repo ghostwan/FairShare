@@ -76,8 +76,13 @@ fun EventsScreen(
             onRefresh = { vm.refresh() },
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
-            if (events.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // events == null  -> still loading (don't flash the empty state)
+            // events.isEmpty() -> loaded, no events yet
+            // else             -> render the list
+            val list = events
+            when {
+                list == null -> Box(Modifier.fillMaxSize())
+                list.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Groups, null, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(16.dp))
@@ -85,13 +90,12 @@ fun EventsScreen(
                         Text("Crée ton premier voyage ou repas partagé.", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-            } else {
-                LazyColumn(
+                else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(events, key = { it.id }) { e ->
+                    items(list, key = { it.id }) { e ->
                         ElevatedCard(
                             modifier = Modifier.combinedClickable(
                                 onClick = { onOpenEvent(e.id) },

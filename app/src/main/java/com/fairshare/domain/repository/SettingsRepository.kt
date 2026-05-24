@@ -37,7 +37,18 @@ interface SettingsRepository {
     val cloudBaseUrl: Flow<String>
     suspend fun setCloudBaseUrl(value: String)
 
+    /**
+     * When `true`, foreground screens poll the cloud Worker every
+     * [DEFAULT_POLL_INTERVAL_MS] ms while resumed so changes from other
+     * devices appear without manual refresh. When `false`, polling is
+     * disabled and the user must pull-to-refresh manually. The initial
+     * sync on ON_RESUME is also skipped.
+     */
+    val autoRefreshEnabled: Flow<Boolean>
+    suspend fun setAutoRefreshEnabled(value: Boolean)
+
     companion object {
+        const val DEFAULT_POLL_INTERVAL_MS = 10_000L
         const val DEFAULT_CLOUD_BASE_URL = "https://fairshare-sync.ghostwan.workers.dev"
     }
 }

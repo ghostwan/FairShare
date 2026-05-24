@@ -1,16 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    FairShare launcher foreground.
+
+    Stylized "split coin" centered in the 108dp adaptive icon safe zone:
+    a large white disc cut by a diagonal divider, with two small chevron
+    arrows curving around it to suggest sharing / sync between people.
+    All paths are filled (no strokes) so adaptive-icon masking stays
+    pixel-perfect at every density.
+
+    Background color: @color/ic_launcher_background (#2E7D5B dark green).
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Main disc (the "coin"). Centered at 54,54, radius 26 (safe zone is 33). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,30L74,78L34,78Z" />
+        android:pathData="M54,28 a26,26 0 1 0 0,52 a26,26 0 1 0 0,-52 Z" />
+
+    <!-- Diagonal split line through the disc, in background green. -->
+    <path
+        android:fillColor="#2E7D5B"
+        android:pathData="M36,72 L70,38 L72,40 L38,74 Z" />
+
+    <!-- Left "person" mark: euro symbol fragment (two horizontal bars). -->
+    <path
+        android:fillColor="#2E7D5B"
+        android:pathData="M40,48 L52,48 L52,50.5 L40,50.5 Z" />
+    <path
+        android:fillColor="#2E7D5B"
+        android:pathData="M40,52.5 L52,52.5 L52,55 L40,55 Z" />
+
+    <!-- Right "person" mark: euro symbol fragment (two horizontal bars). -->
+    <path
+        android:fillColor="#2E7D5B"
+        android:pathData="M56,53 L68,53 L68,55.5 L56,55.5 Z" />
+    <path
+        android:fillColor="#2E7D5B"
+        android:pathData="M56,57.5 L68,57.5 L68,60 L56,60 Z" />
+
+    <!-- Top-right share arrow (chevron pointing up-right). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M40,42m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+        android:pathData="M82,24 L82,34 L78,34 L78,28 L72,28 L72,24 Z" />
+
+    <!-- Bottom-left share arrow (chevron pointing down-left). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M68,42m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+        android:pathData="M26,84 L26,74 L30,74 L30,80 L36,80 L36,84 Z" />
 </vector>

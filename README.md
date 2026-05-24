@@ -17,7 +17,8 @@ the people who actually consumed it**.
 
 ## Features
 
-- Create an event (trip, meal, flatshare…) with its own currency
+- Create an event (trip, meal, flatshare…) with its own currency, rename
+  or archive it at any time
 - Add participants
 - Add a "classic" expense: who paid, for whom, split mode (EQUAL / SHARES / EXACT)
 - **Scan a receipt**:
@@ -28,7 +29,16 @@ the people who actually consumed it**.
   - if ML Kit gets confused (some receipts are nasty — see `app/docs/bug-receipts/`),
     a single tap on **"Retry with AI"** sends the same image to Gemini and
     re-parses the result
-- Real-time balances + minimal repayment plan (greedy settlement)
+- Real-time balances + minimal repayment plan (greedy settlement). Tap
+  **"Remboursé"** on a suggested settlement to record it as a flagged
+  expense — balances rebalance and the suggestion disappears
+- **Multi-device sync, end-to-end encrypted**: a Cloudflare Worker
+  relays AES-256-GCM-encrypted CRDT ops between devices that share an
+  invitation QR code. The key never leaves your phones; the Worker only
+  ever sees ciphertext. Foreground screens poll every 10 s by default
+  (toggleable in Settings)
+- **Invite another device** via a QR code (`fairshare://join?...`) that
+  carries the encryption key + a signed seed of the current event state
 
 ## Architecture
 
@@ -36,14 +46,19 @@ the people who actually consumed it**.
 com.fairshare
 ├── domain/          # Pure models, repository interfaces, use cases
 ├── data/            # Room (entities/DAOs/DB), repository impls, OCR engines
-│   └── ocr/             # MlKitReceiptParser + GeminiReceiptParser
+│   ├── ocr/             # MlKitReceiptParser + GeminiReceiptParser
+│   ├── sync/            # CRDT op log, AES-GCM crypto, Cloudflare Worker client
+│   └── invitation/      # QR-code invitation codec (join flow only)
 ├── di/              # Hilt modules (incl. @MlKit / @Gemini qualifiers)
 └── presentation/    # Compose + ViewModels + navigation + theme
     ├── events/          # Event list & creation
-    ├── eventdetail/     # Expenses / Balances / Participants
+    ├── eventdetail/     # Expenses / Balances / Participants + rename
     ├── expense/         # Classic expense creation
     ├── receipt/         # Receipt scan + per-item assignment
-    └── settings/        # Gemini API key + model
+    ├── invite/          # Show an invitation QR code (host device)
+    ├── join/            # Accept a scanned invitation (joining device)
+    ├── scan/            # Camera-based QR scanner
+    └── settings/        # Gemini key, cloud Worker URL, auto-refresh toggle
 ```
 
 ### Key use cases
@@ -57,7 +72,29 @@ com.fairshare
   unit price, expands it into N individual lines so each can be assigned
   independently.
 
-### Receipt OCR pipeline
+### Multi-device sync (E2E encrypted)
+
+Each event owns a randomly-generated 256-bit AES key, stored locally in
+its `EventEntity`. Every local mutation (expense added, participant
+renamed, event archived, …) is recorded as an immutable CRDT op
+(`OpPayload.*`) in a per-event log with stable UUIDs. The op is then
+applied locally **and** AES-256-GCM-encrypted with the event key,
+signed with HMAC, and pushed to a tiny stateless **Cloudflare Worker**
+(`https://fairshare-sync.ghostwan.workers.dev`) that just stores the
+opaque blob keyed by `(eventId, opId)`. Other devices that hold the
+same key pull, decrypt, deduplicate by `opId`, and apply via the same
+LWW-snapshot pipeline. Conflict resolution is last-writer-wins per
+entity snapshot, with a Lamport-style logical clock.
+
+Pairing two devices is one tap: the host device shows an invitation QR
+code (`fairshare://join?event=…&key=…&seed=…&sig=…`) containing the
+event id, the AES key, an encrypted seed of the current snapshot and an
+HMAC signature. The joining device scans it, accepts the join, and
+both devices stay in sync going forward via the Worker. Foreground
+screens poll every 10 s by default; this can be disabled in Settings
+for users who prefer manual pull-to-refresh.
+
+
 
 `ReceiptParser` is an interface with two implementations, both exposed through
 Hilt qualifiers (`@MlKit` and `@Gemini`):
@@ -83,7 +120,8 @@ the receipt's logical structure. Pipeline:
 
 Real-world bugs each get a dedicated regression test with a real OCR dump:
 see `app/docs/bug-receipts/` and `app/src/test/resources/receipts/*.log`.
-**23 JVM tests, all green.**
+The full JVM test suite (OCR parser + crypto + invitation codec + Worker
+transport) currently holds **89 green tests**.
 
 **`GeminiReceiptParser`** — AI fallback. Sends the receipt image (base64
 JPEG) with a structured prompt asking for `{ "items": [{ "label", "priceCents",

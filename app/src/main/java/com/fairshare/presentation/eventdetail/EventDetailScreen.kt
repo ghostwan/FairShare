@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -43,6 +44,7 @@ fun EventDetailScreen(
     val isRefreshing by vm.isRefreshing.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.Expenses) }
     var showAddPerson by rememberSaveable { mutableStateOf(false) }
+    var showRename by rememberSaveable { mutableStateOf(false) }
     val currency = state.event?.currency ?: "EUR"
 
     // Refresh from cloud every time the screen is resumed, then poll
@@ -59,6 +61,12 @@ fun EventDetailScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showRename = true },
+                        enabled = state.event != null,
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Renommer")
+                    }
                     IconButton(onClick = { onInvite(vm.eventId) }) {
                         Icon(Icons.Default.GroupAdd, contentDescription = "Inviter")
                     }
@@ -102,14 +110,16 @@ fun EventDetailScreen(
                     }
                 }
                 when (tab) {
-                    Tab.Expenses -> ExpensesList(
+                    Tab.Expenses -> if (state.loaded) ExpensesList(
                         state = state,
                         currency = currency,
                         onClick = { id -> onEditExpense(vm.eventId, id) },
                         onDelete = vm::removeExpense,
-                    )
-                    Tab.Balances -> BalancesList(state, currency, onSettle = vm::recordSettlement)
-                    Tab.Participants -> ParticipantsList(state, onRemove = vm::removeParticipant)
+                    ) else Box(Modifier.fillMaxSize())
+                    Tab.Balances -> if (state.loaded) BalancesList(state, currency, onSettle = vm::recordSettlement)
+                        else Box(Modifier.fillMaxSize())
+                    Tab.Participants -> if (state.loaded) ParticipantsList(state, onRemove = vm::removeParticipant)
+                        else Box(Modifier.fillMaxSize())
                 }
             }
         }
@@ -127,6 +137,32 @@ fun EventDetailScreen(
                 }) { Text("Ajouter") }
             },
             dismissButton = { TextButton(onClick = { showAddPerson = false }) { Text("Annuler") } },
+        )
+    }
+
+    if (showRename) {
+        // Pre-fill with the current name; cleared on dismiss via key().
+        var name by rememberSaveable(state.event?.id) {
+            mutableStateOf(state.event?.name.orEmpty())
+        }
+        AlertDialog(
+            onDismissRequest = { showRename = false },
+            title = { Text("Renommer l'événement") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nom") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank() && name.trim() != state.event?.name,
+                    onClick = { vm.renameEvent(name); showRename = false },
+                ) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { showRename = false }) { Text("Annuler") } },
         )
     }
 }
@@ -236,17 +272,34 @@ private fun BalancesList(
                 Text("Pour solder", style = MaterialTheme.typography.titleMedium)
             }
             items(state.settlements) { s ->
-                ListItem(
-                    headlineContent = { Text("${s.fromName} → ${s.toName}") },
-                    supportingContent = { Text(s.amountCents.centsToString(currency), fontWeight = FontWeight.SemiBold) },
-                    trailingContent = {
-                        TextButton(onClick = { onSettle(s) }) {
+                // Custom Card layout instead of ListItem because the
+                // "Remboursé" TextButton in trailingContent overflowed
+                // on narrow phones and overlapped the price line.
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${s.fromName} → ${s.toName}",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                s.amountCents.centsToString(currency),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = { onSettle(s) },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
                             Icon(Icons.Default.Check, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
                             Text("Remboursé")
                         }
-                    },
-                )
+                    }
+                }
             }
         }
     }

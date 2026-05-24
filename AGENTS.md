@@ -8,8 +8,10 @@ repository. Read this in full before doing anything.
 - Project: **FairShare** — Android Tricount-style expense splitter with
   a per-item receipt scanner.
 - Owner / sole human committer: **ghostwan** (`ghostwan@gmail.com`).
-- Default working branch for agents: **`claude`** (push there, never to
-  `master` / `main` unless explicitly told).
+- Default working branch for agents: **`share`** (push there, never to
+  `master` / `main` unless explicitly told). The `claude` branch holds
+  the historical OCR work that powers the README's agent-comparison
+  side note — leave it alone.
 - Remote: `git@github.com:ghostwan/FairShare.git` (SSH).
 
 ## Hard rules
@@ -25,12 +27,14 @@ repository. Read this in full before doing anything.
 3. **Never commit secrets.** `local.properties` is gitignored and
    contains the Gemini API key — leave it alone. If you see a key
    pasted in chat or in a log, do not echo it back into a file.
-4. **Never force-push `master` / `main`.** Force-pushing the `claude`
-   branch is fine (`git push --force-with-lease origin claude`) since
-   the owner reviews and merges manually.
-5. **Always run `./gradlew :app:testDebugUnitTest` before committing
-   a parser change.** All 23 tests must stay green. If you add a fix
-   you should add a regression test.
+4. **Never force-push `master` / `main`.** Force-pushing the `share`
+   branch is fine (`git push --force-with-lease origin share`) since
+   the owner reviews and merges manually. The `claude` branch is
+   frozen — do not push to it.
+5. **Always run `./gradlew :app:testDebugUnitTest` before committing.**
+   The full JVM suite (currently **89 tests** — OCR + crypto +
+   invitation codec + Worker transport) must stay green. Any fix
+   touching the parser should add a regression test.
 6. **Reply in French in chat by default.** The owner is French. Code,
    commits, and docs stay English.
 
@@ -43,8 +47,17 @@ repository. Read this in full before doing anything.
 - Hilt for DI. Two `ReceiptParser` implementations live behind the
   qualifiers `@MlKit` (default, offline) and `@Gemini` (REST fallback).
 - Money is always stored as `Long` cents. Default currency is EUR.
-- Persistence: Room, with DataStore for settings (Gemini key + model).
-- Networking: OkHttp + kotlinx-serialization (only used by Gemini).
+- Persistence: Room, with DataStore for settings (Gemini key + model +
+  cloud Worker URL + auto-refresh toggle).
+- Networking: OkHttp + kotlinx-serialization (Gemini + Worker sync).
+- **Multi-device sync** (added on `share`): per-event AES-256-GCM with
+  HMAC-signed envelopes, relayed by a stateless Cloudflare Worker at
+  `https://fairshare-sync.ghostwan.workers.dev`. Conflict resolution
+  is snapshot-based LWW driven by an op log (`data/sync/`). Pairing is
+  done via QR-code invitations (`fairshare://join?...`) handled by
+  `data/invitation/` + `presentation/invite/` + `presentation/join/`.
+  Foreground screens poll every 10 s by default; user can turn the
+  poll off in Settings (key `auto_refresh_enabled`).
 
 ## Important paths
 
@@ -110,7 +123,7 @@ Follow this exact loop:
    If a synthetic test (rowHeight=30) and a real fixture (medianHeight
    ≈ 80) disagree, prefer ratios that work on both rather than
    hardcoded thresholds.
-5. **Run `./gradlew :app:testDebugUnitTest`**, fix until all 23+ tests
+5. **Run `./gradlew :app:testDebugUnitTest`**, fix until all 89+ tests
    pass.
 6. **Build, install, ask the owner to re-scan.** `./run.sh debug`,
    then `./screenshot.sh app/docs/bug-receipts/bug-NN-<name>/result.png`
@@ -119,8 +132,8 @@ Follow this exact loop:
    not always match the ideal — that's fine if the price total and the
    item count are right (OCR misreads like `T-S!IRT` are outside the
    parser's scope).
-8. **Commit in English**, push to `claude` with
-   `git push origin claude` (or `--force-with-lease` if you amended).
+8. **Commit in English**, push to `share` with
+   `git push origin share` (or `--force-with-lease` if you amended).
 
 ## Parser quick-reference (current state, post-bug-04)
 
