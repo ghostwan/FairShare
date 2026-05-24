@@ -1,5 +1,6 @@
 package com.fairshare.di
 
+import com.fairshare.data.ocr.GeminiReceiptParser
 import com.fairshare.data.ocr.MlKitReceiptParser
 import com.fairshare.data.repository.EventRepositoryImpl
 import com.fairshare.data.repository.ExpenseRepositoryImpl
@@ -12,8 +13,11 @@ import com.fairshare.domain.repository.ReceiptParser
 import com.fairshare.domain.repository.SettingsRepository
 import dagger.Binds
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -29,9 +33,24 @@ abstract class RepositoryModule {
     @Binds @Singleton
     abstract fun bindExpenseRepository(impl: ExpenseRepositoryImpl): ExpenseRepository
 
-    @Binds @Singleton
-    abstract fun bindReceiptParser(impl: MlKitReceiptParser): ReceiptParser
+    @Binds @Singleton @MlKit
+    abstract fun bindMlKitReceiptParser(impl: MlKitReceiptParser): ReceiptParser
+
+    @Binds @Singleton @Gemini
+    abstract fun bindGeminiReceiptParser(impl: GeminiReceiptParser): ReceiptParser
 
     @Binds @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object NetworkModule {
+    @Provides @Singleton
+    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        // Gemini multimodal calls can be slow on large images.
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
 }
