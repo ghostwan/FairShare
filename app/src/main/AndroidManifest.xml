@@ -31,6 +31,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+                Sneakernet deep links (DESIGN.md §6.1). The companion
+                "Apply changes" UI that consumes these intents lands in a
+                follow-up commit; the filter is declared now so the OS
+                knows we can handle the scheme as soon as that UI exists.
+            -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fairshare" android:host="sync" />
+                <data android:scheme="fairshare" android:host="join" />
+            </intent-filter>
         </activity>
     </application>
 

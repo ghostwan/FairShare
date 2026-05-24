@@ -9,6 +9,7 @@ import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.repository.EventRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.security.SecureRandom
 import java.util.UUID
 import javax.inject.Inject
 
@@ -21,8 +22,13 @@ import javax.inject.Inject
  * 2. Appends the op to the append-only log.
  * 3. Re-materializes the affected entity via LWW.
  *
- * This is the only writer for the `events` table now: the DAO methods
- * are still called, but only from inside [OperationApplier].
+ * Special case [create]: a fresh 32-byte encryption key is generated
+ * client-side (DESIGN.md §2.3) and persisted directly on the
+ * [EventEntity] before the EventUpsert op is emitted. The key is
+ * intentionally NOT part of the op payload — it must never leave the
+ * device through the op log, only via the out-of-band invitation URL.
+ * The materializer preserves the existing key when applying the
+ * subsequent op, so this two-step is correct.
  *
  * Reference: DESIGN.md §5.
  */
@@ -30,6 +36,8 @@ class EventRepositoryImpl @Inject constructor(
     private val dao: EventDao,
     private val applier: OperationApplier,
 ) : EventRepository {
+
+    private val secureRandom = SecureRandom()
 
     override fun observeEvents(): Flow<List<Event>> =
         dao.observeAll().map { list -> list.map { it.toDomain() } }
@@ -39,6 +47,18 @@ class EventRepositoryImpl @Inject constructor(
 
     override suspend fun create(event: Event): String {
         val id = event.id.ifBlank { UUID.randomUUID().toString() }
+        val key = ByteArray(KEY_LENGTH).also(secureRandom::nextBytes)
+        // Persist the key out-of-band before the materializer reads it.
+        dao.insert(
+            EventEntity(
+                id = id,
+                name = event.name,
+                description = event.description,
+                currency = event.currency,
+                createdAt = event.createdAt,
+                encryptionKey = key,
+            ),
+        )
         applier.applyLocal(
             eventId = id,
             payload = OpPayload.EventUpsert(event.copy(id = id).toSnapshot()),
@@ -58,6 +78,10 @@ class EventRepositoryImpl @Inject constructor(
             eventId = id,
             payload = OpPayload.EventDelete(eventId = id),
         )
+    }
+
+    companion object {
+        private const val KEY_LENGTH = 32
     }
 }
 

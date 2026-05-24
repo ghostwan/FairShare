@@ -12,6 +12,7 @@ import com.fairshare.presentation.expense.AddExpenseScreen
 import com.fairshare.presentation.expense.EditExpenseRouter
 import com.fairshare.presentation.receipt.ScanReceiptScreen
 import com.fairshare.presentation.settings.SettingsScreen
+import com.fairshare.presentation.share.ShareChangesScreen
 
 @Composable
 fun FairShareNavGraph() {
@@ -37,6 +38,7 @@ fun FairShareNavGraph() {
                     nav.navigate(Route.EditExpense.build(eventId, expenseId))
                 },
                 onScanReceipt = { id -> nav.navigate(Route.ScanReceipt.build(id)) },
+                onShareChanges = { id -> nav.navigate(Route.ShareChanges.build(id)) },
             )
         }
         composable(
@@ -59,6 +61,12 @@ fun FairShareNavGraph() {
             arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
         ) {
             ScanReceiptScreen(onDone = { nav.popBackStack() })
+        }
+        composable(
+            Route.ShareChanges.path,
+            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
+        ) {
+            ShareChangesScreen(onBack = { nav.popBackStack() })
         }
     }
 }

@@ -16,6 +16,9 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE id = :id")
     fun observeById(id: String): Flow<EventEntity?>
 
+    @Query("SELECT * FROM events WHERE id = :id")
+    suspend fun getById(id: String): EventEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: EventEntity)
 

@@ -15,6 +15,9 @@ sealed class Route(val path: String) {
     data object ScanReceipt : Route("event/{eventId}/expense/scan") {
         fun build(eventId: String) = "event/$eventId/expense/scan"
     }
+    data object ShareChanges : Route("event/{eventId}/share") {
+        fun build(eventId: String) = "event/$eventId/share"
+    }
 
     companion object {
         const val ARG_EVENT_ID = "eventId"

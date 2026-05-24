@@ -136,6 +136,13 @@ class OperationApplier @Inject constructor(
                     eventDao.delete(entityId)
                 } else {
                     val snap = (winningPayload as OpPayload.EventUpsert).event
+                    // The encryption key is local-only and is never carried
+                    // by ops (DESIGN.md §2.3). Preserve the existing key
+                    // when an op updates the event's mutable fields; if the
+                    // event has not yet been materialized on this device,
+                    // leave it empty — the join flow (Step H follow-up)
+                    // writes the key out-of-band from the invitation link.
+                    val existingKey = eventDao.getById(snap.id)?.encryptionKey ?: ByteArray(0)
                     eventDao.insert(
                         EventEntity(
                             id = snap.id,
@@ -143,6 +150,7 @@ class OperationApplier @Inject constructor(
                             description = snap.description,
                             currency = snap.currency,
                             createdAt = snap.createdAt,
+                            encryptionKey = existingKey,
                         ),
                     )
                 }
