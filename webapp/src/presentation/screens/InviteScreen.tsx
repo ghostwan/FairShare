@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -18,17 +18,20 @@ import { buildInvitationForEvent } from "@/sync/coordinator";
  * the https URL so iOS Camera app opens it natively; the link is
  * shown below so users can also send it through any messaging app.
  *
- * We re-render the QR every time we open the screen because the
- * embedded seed reflects the *current* op log — new participants /
- * expenses added by the inviter since the last open should land in
- * the joiner's bootstrap.
+ * We render the QR into an `<img>` (via `toDataURL`) rather than a
+ * `<canvas>` because the canvas element exposes its native rasterised
+ * dimensions through its `width`/`height` attributes, which fight with
+ * the CSS `aspectRatio: 1/1` of the parent in flex containers — the
+ * result is the QR getting stretched vertically on mobile. An `<img>`
+ * with `width: 100%, height: auto` defers all sizing to CSS and keeps
+ * the QR a perfect square at any viewport width.
  */
 export function InviteScreen() {
   const { eventId = "" } = useParams<{ eventId: string }>();
   const [url, setUrl] = useState<string | null>(null);
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,34 +40,22 @@ export function InviteScreen() {
         const u = await buildInvitationForEvent(eventId);
         if (cancelled) return;
         setUrl(u);
+        const d = await QRCode.toDataURL(u, {
+          margin: 1,
+          // Generous bitmap size so the QR stays sharp when CSS
+          // upscales it on tablets / desktop.
+          width: 512,
+          errorCorrectionLevel: "M",
+        });
+        if (!cancelled) setDataUrl(d);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [eventId]);
-
-  // Separate draw effect: the canvas only mounts once `url` is set
-  // (we hide it via opacity to keep the ref stable), but even with an
-  // always-mounted canvas we want the draw to retry whenever the URL
-  // changes (e.g. user re-opens the screen after adding an expense
-  // and the seed grows).
-  useEffect(() => {
-    if (!url || !canvasRef.current) return;
-    let cancelled = false;
-    void QRCode.toCanvas(canvasRef.current, url, {
-      margin: 1,
-      scale: 6,
-      errorCorrectionLevel: "M",
-    }).catch((e) => {
-      if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
 
   const copy = async () => {
     if (!url) return;
@@ -90,14 +81,19 @@ export function InviteScreen() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          bgcolor: "background.paper",
+          bgcolor: "#fff",
           border: "1px solid",
           borderColor: "divider",
           borderRadius: 1,
+          overflow: "hidden",
         }}
       >
-        {url ? (
-          <canvas ref={canvasRef} style={{ maxWidth: "100%", height: "auto" }} />
+        {dataUrl ? (
+          <img
+            src={dataUrl}
+            alt="Invitation QR code"
+            style={{ width: "100%", height: "100%", display: "block" }}
+          />
         ) : (
           <CircularProgress />
         )}
@@ -109,6 +105,7 @@ export function InviteScreen() {
             wordBreak: "break-all",
             fontFamily: "monospace",
             color: "text.secondary",
+            maxWidth: 320,
           }}
         >
           {url}
