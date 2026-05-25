@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fairshare.presentation.common.AddCategoryDialog
+import com.fairshare.presentation.common.CategoryChipsRow
 import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.toMediumDateLabel
 
@@ -28,8 +30,10 @@ fun EditReceiptScreen(
 ) {
     val state by vm.state.collectAsState()
     val participants by vm.participants.collectAsState()
+    val categories by vm.categories.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var showAddCategory by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -69,6 +73,17 @@ fun EditReceiptScreen(
                         value = state.title, onValueChange = vm::setTitle,
                         label = { Text("Titre") }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    Text("Catégorie", style = MaterialTheme.typography.titleSmall)
+                }
+                item {
+                    CategoryChipsRow(
+                        categories = categories,
+                        selectedId = state.categoryId,
+                        onSelect = vm::setCategory,
+                        onAddNew = { showAddCategory = true },
                     )
                 }
                 item {
@@ -179,5 +194,15 @@ fun EditReceiptScreen(
         ) {
             DatePicker(state = pickerState)
         }
+    }
+
+    if (showAddCategory) {
+        AddCategoryDialog(
+            onDismiss = { showAddCategory = false },
+            onConfirm = { name, emoji, color ->
+                vm.addCustomCategory(name, emoji, color)
+                showAddCategory = false
+            },
+        )
     }
 }

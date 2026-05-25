@@ -28,6 +28,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fairshare.presentation.common.AddCategoryDialog
+import com.fairshare.presentation.common.CategoryChipsRow
 import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.parseAmountToCents
 import java.io.File
@@ -41,7 +43,9 @@ fun ScanReceiptScreen(
     val context = LocalContext.current
     val state by vm.state.collectAsState()
     val participants by vm.participants.collectAsState()
+    val categories by vm.categories.collectAsState()
     val hasGeminiKey by vm.hasGeminiKey.collectAsState()
+    var showAddCategory by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(participants) {
         if (state.payerId == null && participants.isNotEmpty()) vm.setPayer(participants.first().id)
@@ -129,6 +133,17 @@ fun ScanReceiptScreen(
                     )
                 }
                 item {
+                    Text("Catégorie", style = MaterialTheme.typography.titleSmall)
+                }
+                item {
+                    CategoryChipsRow(
+                        categories = categories,
+                        selectedId = state.categoryId,
+                        onSelect = vm::setCategory,
+                        onAddNew = { showAddCategory = true },
+                    )
+                }
+                item {
                     Text("Payé par", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         participants.forEach { p ->
@@ -197,6 +212,16 @@ fun ScanReceiptScreen(
                 Text(if (state.isSaving) "…" else "Enregistrer la dépense")
             }
         }
+    }
+
+    if (showAddCategory) {
+        AddCategoryDialog(
+            onDismiss = { showAddCategory = false },
+            onConfirm = { name, emoji, color ->
+                vm.addCustomCategory(name, emoji, color)
+                showAddCategory = false
+            },
+        )
     }
 }
 

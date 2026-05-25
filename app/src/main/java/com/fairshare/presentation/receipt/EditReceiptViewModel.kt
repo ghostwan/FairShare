@@ -5,10 +5,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fairshare.data.sync.SyncWorker
+import com.fairshare.domain.model.Category
+import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.ExpenseItem
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.ReceiptItem
+import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import com.fairshare.domain.usecase.AssignReceiptItemsUseCase
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,6 +35,8 @@ data class EditReceiptState(
     val items: List<ReceiptItem> = emptyList(),
     /** Wall-clock date of the receipt expense (millis). */
     val dateMillis: Long = System.currentTimeMillis(),
+    /** Selected category id (`default.*` or a custom UUID). Null = uncategorized. */
+    val categoryId: String? = null,
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -42,6 +48,7 @@ class EditReceiptViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     participantRepository: ParticipantRepository,
     private val expenseRepository: ExpenseRepository,
+    private val categoryRepository: CategoryRepository,
     private val assignReceiptItems: AssignReceiptItemsUseCase,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -52,6 +59,11 @@ class EditReceiptViewModel @Inject constructor(
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val categories: StateFlow<List<Category>> =
+        categoryRepository.observeByEvent(eventId)
+            .map { custom -> DefaultCategories.ALL + custom.sortedBy { it.name.lowercase() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DefaultCategories.ALL)
 
     private val _state = MutableStateFlow(EditReceiptState())
     val state: StateFlow<EditReceiptState> = _state.asStateFlow()
@@ -69,6 +81,7 @@ class EditReceiptViewModel @Inject constructor(
                     payerId = expense.payerId,
                     items = expense.items.map { ei -> ei.toReceiptItem() },
                     dateMillis = expense.date,
+                    categoryId = expense.categoryId,
                     isLoading = false,
                 )
             }
@@ -78,6 +91,19 @@ class EditReceiptViewModel @Inject constructor(
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
     fun setDate(millis: Long) = _state.update { it.copy(dateMillis = millis) }
+    fun setCategory(id: String?) = _state.update { it.copy(categoryId = id) }
+
+    fun addCustomCategory(name: String, emoji: String, color: Long) {
+        val cleaned = name.trim()
+        if (cleaned.isEmpty()) return
+        viewModelScope.launch {
+            val id = categoryRepository.upsert(
+                Category(eventId = eventId, name = cleaned, emoji = emoji, color = color),
+            )
+            _state.update { it.copy(categoryId = id) }
+            SyncWorker.enqueueOneShot(context, eventId)
+        }
+    }
 
     fun toggleAssignment(itemId: String, participantId: String) = _state.update { s ->
         s.copy(items = s.items.map {
@@ -133,6 +159,7 @@ class EditReceiptViewModel @Inject constructor(
                         shares = shares,
                         items = itemDetails,
                         date = s.dateMillis,
+                        categoryId = s.categoryId,
                     )
                 )
                 SyncWorker.enqueueOneShot(context, eventId)

@@ -8,10 +8,13 @@ import androidx.lifecycle.viewModelScope
 import com.fairshare.data.sync.SyncWorker
 import com.fairshare.di.Gemini
 import com.fairshare.di.MlKit
+import com.fairshare.domain.model.Category
+import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.domain.model.Expense
 import com.fairshare.domain.model.ExpenseItem
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.model.ReceiptItem
+import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import com.fairshare.domain.repository.ReceiptParser
@@ -37,6 +40,8 @@ data class ScanReceiptState(
     val title: String = DEFAULT_TITLE,
     val payerId: String? = null,
     val items: List<ReceiptItem> = emptyList(),
+    /** Selected category id (`default.*` or a custom UUID). Null = uncategorized. */
+    val categoryId: String? = null,
     val isScanning: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -57,6 +62,7 @@ class ScanReceiptViewModel @Inject constructor(
     @MlKit private val mlKitParser: ReceiptParser,
     @Gemini private val geminiParser: ReceiptParser,
     private val expenseRepository: ExpenseRepository,
+    private val categoryRepository: CategoryRepository,
     private val assignReceiptItems: AssignReceiptItemsUseCase,
     private val expandReceiptQuantities: ExpandReceiptQuantitiesUseCase,
     private val settings: SettingsRepository,
@@ -68,6 +74,16 @@ class ScanReceiptViewModel @Inject constructor(
     val participants: StateFlow<List<Participant>> =
         participantRepository.observeByEvent(eventId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Defaults first, then the user's custom categories for this event,
+     * sorted alphabetically. Same source as [AddExpenseViewModel] so the
+     * picker behaves identically.
+     */
+    val categories: StateFlow<List<Category>> =
+        categoryRepository.observeByEvent(eventId)
+            .map { custom -> DefaultCategories.ALL + custom.sortedBy { it.name.lowercase() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DefaultCategories.ALL)
 
     val expandQuantities: StateFlow<Boolean> =
         settings.expandQuantities
@@ -86,6 +102,23 @@ class ScanReceiptViewModel @Inject constructor(
 
     fun setTitle(v: String) = _state.update { it.copy(title = v) }
     fun setPayer(id: String) = _state.update { it.copy(payerId = id) }
+    fun setCategory(id: String?) = _state.update { it.copy(categoryId = id) }
+
+    /**
+     * Creates a new custom category for the current event and selects
+     * it on the receipt being entered.
+     */
+    fun addCustomCategory(name: String, emoji: String, color: Long) {
+        val cleaned = name.trim()
+        if (cleaned.isEmpty()) return
+        viewModelScope.launch {
+            val id = categoryRepository.upsert(
+                Category(eventId = eventId, name = cleaned, emoji = emoji, color = color),
+            )
+            _state.update { it.copy(categoryId = id) }
+            SyncWorker.enqueueOneShot(context, eventId)
+        }
+    }
 
     fun scan(uri: Uri) = runParser(uri, mlKitParser)
 
@@ -174,6 +207,7 @@ class ScanReceiptViewModel @Inject constructor(
                         eventId = eventId, title = s.title.ifBlank { DEFAULT_TITLE },
                         amountCents = total, payerId = payer, shares = shares,
                         items = itemDetails,
+                        categoryId = s.categoryId,
                     )
                 )
                 SyncWorker.enqueueOneShot(context, eventId)
