@@ -391,4 +391,92 @@ class MlKitReceiptParserFixtureTest {
         val totalLeaked = items.count { it.priceCents == 8900L }
         assertEquals("Grand total leaked as item", 0, totalLeaked)
     }
+
+    /**
+     * Bug 05 — "Crêperie de la Poste" again, but this time photographed at
+     * an angle. The perspective tilt pushes every right-column price token
+     * ~80 px higher (smaller cy) than its matching label token on the left
+     * column. The anchor-walk row clustering then assigns each price to the
+     * *previous* item's row, shifting the whole receipt by one line:
+     *  - 11.00 → orphan phantom row (no label)
+     *  - 9.30  → CRE MARRON row (should be FLAMB)
+     *  - 6.90  → BEURRE row (should be POMME SALIDOU)
+     *  - 5.80  → POMME row (should be CHO MAISON)
+     *  - …and CAFE ALLONGE loses its 2.10 price entirely.
+     *
+     * Fix: a new [shiftPricesForTilt] stage runs *before* row clustering. It
+     * searches for the global vertical offset δ ∈ [0, medianHeight × 1.5]
+     * that maximises the number of prices landing within rowTolerance of a
+     * label token's cy. For this fixture δ ≈ 78 wins (8/8 prices align) and
+     * every price gets clustered with its real label.
+     */
+    @Test
+    fun `bug-05 ghost line — perspective tilt re-pairs prices to correct labels`() {
+        val tokens = loadFixture("bug-05-ghost-line.log")
+        assertEquals("fixture should contain 95 tokens", 95, tokens.size)
+
+        val items = extractItems(tokens)
+
+        // The receipt has 8 distinct item lines.
+        assertTrue(
+            "Expected ≥ 8 items, got ${items.size}: ${items.map { "${it.label}=${it.priceCents}×${it.quantity}" }}",
+            items.size >= 8,
+        )
+
+        // Sum of all item line-totals must equal the printed grand total (56,30 €).
+        val total = items.sumOf { it.priceCents }
+        assertEquals(
+            "Sum of item line-totals should be 56,30 €",
+            5630L,
+            total,
+        )
+
+        // Specific item checks: each line's price now matches its label.
+        val cre = items.firstOrNull { it.label.contains("CRE MARRON", ignoreCase = true) }
+        assertNotNull("Missing '2x CRE MARRON' line", cre)
+        assertEquals(2, cre!!.quantity)
+        assertEquals(1100L, cre.priceCents)
+
+        val flamb = items.firstOrNull { it.label.contains("FLAMB", ignoreCase = true) }
+        assertNotNull("Missing 'FLAMB MARRON RHUM' line", flamb)
+        assertEquals(930L, flamb!!.priceCents)
+
+        val beurre = items.firstOrNull { it.label.contains("BEURRE", ignoreCase = true) }
+        assertNotNull("Missing 'BEURRE SUCRE' line", beurre)
+        assertEquals("BEURRE SUCRE should be 3.70 €", 370L, beurre!!.priceCents)
+
+        val pomme = items.firstOrNull { it.label.contains("POMME", ignoreCase = true) }
+        assertNotNull("Missing 'POMME SALIDOU' line", pomme)
+        assertEquals("POMME SALIDOU should be 6.90 €", 690L, pomme!!.priceCents)
+
+        val cho = items.firstOrNull { it.label.contains("CHO MAISON", ignoreCase = true) }
+        assertNotNull("Missing 'CHO MAISON' line", cho)
+        assertEquals("CHO MAISON should be 5.80 €", 580L, cho!!.priceCents)
+
+        val choc = items.firstOrNull { it.label.contains("CHOCOLAT", ignoreCase = true) }
+        assertNotNull("Missing '4x CHOCOLAT' line", choc)
+        assertEquals(4, choc!!.quantity)
+        assertEquals(1400L, choc.priceCents)
+
+        val infusion = items.firstOrNull { it.label.contains("INFUSION", ignoreCase = true) }
+        assertNotNull("Missing 'INFUSION' line", infusion)
+        assertEquals(350L, infusion!!.priceCents)
+
+        val cafe = items.firstOrNull { it.label.contains("CAFE", ignoreCase = true) }
+        assertNotNull("CAFE ALLONGE (2.10 €) must not be lost", cafe)
+        assertEquals(210L, cafe!!.priceCents)
+
+        // No ghost line: the phantom orphan "TABLE 9 6 COUVERT SAMERWAN" with
+        // a stolen 11.00 price must not appear as an item.
+        val ghost = items.firstOrNull {
+            it.label.contains("TABLE", ignoreCase = true) ||
+                it.label.contains("COUVERT", ignoreCase = true) ||
+                it.label.contains("SAMERWAN", ignoreCase = true)
+        }
+        assertEquals("Ghost header row leaked as item: '${ghost?.label}'", null, ghost)
+
+        // Grand total (56,30 €) must not appear as an item.
+        val totalLeaked = items.count { it.priceCents == 5630L }
+        assertEquals("Grand total leaked as item", 0, totalLeaked)
+    }
 }

@@ -136,12 +136,20 @@ class MlKitReceiptParser @Inject constructor(
             val medianHeight = cleaned.map { it.height }.sorted()[cleaned.size / 2].coerceAtLeast(1)
             val rowTolerance = (medianHeight * 0.6).toInt().coerceAtLeast(6)
 
+            // Photos taken at an angle systematically push the right-side price
+            // column N pixels higher than the left-side label column (perspective
+            // tilt). Without correction the anchor-walk pairs every label with
+            // the *next* row's price. [shiftPricesForTilt] detects the best
+            // vertical offset to add to every price token so that they realign
+            // with the label rows, then we proceed with the regular clustering.
+            val tiltCorrected = shiftPricesForTilt(cleaned, medianHeight, rowTolerance)
+
             // Group tokens by row using Y proximity from the row *anchor* (first token's
             // cy), not from the previously appended token. Single-link (last-token)
             // clustering breaks down on receipts whose right-most price column is
             // slightly mis-aligned: every right-col price bridges its left-col
             // neighbour to the next row, collapsing several lines into one.
-            val sortedByY = cleaned.sortedBy { it.cy }
+            val sortedByY = tiltCorrected.sortedBy { it.cy }
             val rows = mutableListOf<MutableList<Token>>()
             val anchors = mutableListOf<Int>()
             for (t in sortedByY) {
@@ -270,6 +278,113 @@ class MlKitReceiptParser @Inject constructor(
             }
 
             return out
+        }
+
+        /**
+         * Detects perspective-tilt: when a receipt photo is taken at an angle,
+         * the right-side price column ends up systematically N pixels higher
+         * than the left-side label column. The anchor-walk row clustering then
+         * pairs every label with the *next* row's price — every item is wrong.
+         *
+         * Strategy:
+         *  1. Cluster non-price label tokens into rows by Y proximity, compute
+         *     each row's centroid cy.
+         *  2. For each candidate δ ∈ [0, medianHeight × 1.5], compute the sum
+         *     over all prices of `min(|price.cy + δ − centroid|)`, clamped at
+         *     `rowTolerance × 2` (a price farther than 2 rows away contributes
+         *     a flat penalty rather than dominating the sum).
+         *  3. Pick the δ that *minimises* this distance sum. Ties go to the
+         *     smaller δ.
+         *
+         * Returns the original tokens with each price token's cy shifted by
+         * the chosen δ. δ=0 returns tokens unchanged (no shift applied).
+         */
+        internal fun shiftPricesForTilt(
+            tokens: List<Token>,
+            medianHeight: Int,
+            rowTolerance: Int,
+        ): List<Token> {
+            val prices = tokens.filter { PRICE_REGEX.matches(it.text.trim()) }
+            if (prices.size < 3) return tokens
+
+            // 1. Cluster label tokens into rows by Y proximity, keep real
+            //    labels. Excludes SKU-like rows (single alphanumeric token,
+            //    length ≥ 6, mixing letters and digits with ≥ 2 digits) — those
+            //    appear *below* the price on multi-line receipts (bug-04) and
+            //    would otherwise lure the shift onto the SKU row.
+            val labelTokens = tokens
+                .filter { t ->
+                    val txt = t.text.trim()
+                    !PRICE_REGEX.matches(txt) &&
+                        txt !in CURRENCY_SYMBOLS &&
+                        txt.length >= 2 &&
+                        txt.any { c -> c.isLetter() }
+                }
+                .sortedBy { it.cy }
+            if (labelTokens.isEmpty()) return tokens
+
+            fun isSkuRow(row: List<Token>): Boolean {
+                if (row.size != 1) return false
+                val txt = row[0].text.trim()
+                if (txt.length < 6) return false
+                if (!txt.all { it.isLetterOrDigit() }) return false
+                val hasLetter = txt.any { it.isLetter() }
+                val hasDigit = txt.any { it.isDigit() }
+                return hasLetter && hasDigit && txt.count { it.isDigit() } >= 2
+            }
+
+            val labelRowCentroids = mutableListOf<Int>()
+            val pendingRow = mutableListOf<Token>()
+            var anchor = Int.MIN_VALUE
+            fun flush() {
+                if (pendingRow.isNotEmpty() && !isSkuRow(pendingRow)) {
+                    labelRowCentroids += pendingRow.map { it.cy }.average().toInt()
+                }
+                pendingRow.clear()
+            }
+            for (t in labelTokens) {
+                if (anchor == Int.MIN_VALUE || abs(t.cy - anchor) > rowTolerance) {
+                    flush()
+                    anchor = t.cy
+                }
+                pendingRow += t
+            }
+            flush()
+            if (labelRowCentroids.isEmpty()) return tokens
+
+            // 2. Distance-sum scoring over candidate δ values.
+            val maxDelta = (medianHeight * 1.5).toInt()
+            val step = (medianHeight / 10).coerceAtLeast(1)
+            val penaltyCap = rowTolerance * 2
+            var bestDelta = 0
+            var bestCost = Long.MAX_VALUE
+            var delta = 0
+            while (delta <= maxDelta) {
+                var cost = 0L
+                for (p in prices) {
+                    val shifted = p.cy + delta
+                    var nearest = Int.MAX_VALUE
+                    for (c in labelRowCentroids) {
+                        val d = abs(shifted - c)
+                        if (d < nearest) nearest = d
+                    }
+                    cost += nearest.coerceAtMost(penaltyCap).toLong()
+                }
+                if (cost < bestCost) {
+                    bestCost = cost
+                    bestDelta = delta
+                }
+                delta += step
+            }
+            // Only apply when the shift is large enough to actually move
+            // prices into a different row; otherwise the clustering's existing
+            // tolerance already absorbs the jitter and we shouldn't disturb
+            // perfectly-aligned receipts (bug-01/02/03/04).
+            if (bestDelta < rowTolerance) return tokens
+            val shift = bestDelta
+            return tokens.map { t ->
+                if (PRICE_REGEX.matches(t.text.trim())) t.copy(cy = t.cy + shift) else t
+            }
         }
 
         /**
