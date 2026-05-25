@@ -17,6 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/Share";
@@ -29,6 +30,7 @@ import {
   deleteExpense,
   deleteParticipant,
   listCategories,
+  recordSettlement,
   renameParticipant,
 } from "@/data/repositories";
 import {
@@ -114,6 +116,7 @@ export function EventDetailScreen() {
       )}
       {tab === "balances" && (
         <BalancesTab
+          eventId={eventId}
           currency={event.currency}
           participants={participants}
           expenses={expenses}
@@ -350,6 +353,7 @@ function ExpensesTab(props: {
 }
 
 function BalancesTab(props: {
+  eventId: string;
   currency: string;
   participants: import("@/core/domain/models").Participant[];
   expenses: import("@/core/domain/models").Expense[];
@@ -357,6 +361,24 @@ function BalancesTab(props: {
   const balances = computeBalances(props.participants, props.expenses);
   const settlements = computeSettlements(balances);
   const allZero = balances.every((b) => b.netCents === 0);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  const onSettle = async (s: import("@/core/domain/balances").Settlement) => {
+    const key = `${s.fromId}->${s.toId}`;
+    setBusyKey(key);
+    try {
+      await recordSettlement(
+        props.eventId,
+        s.fromId,
+        s.fromName,
+        s.toId,
+        s.toName,
+        s.amountCents,
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   return (
     <Stack spacing={2}>
@@ -392,15 +414,41 @@ function BalancesTab(props: {
           <Typography variant="subtitle1" gutterBottom>
             {fr.balances.suggestion}
           </Typography>
-          <List dense>
-            {settlements.map((s, i) => (
-              <ListItem key={i}>
-                <ListItemText
-                  primary={`${s.fromName} ${fr.balances.owes} ${formatMoneyCents(s.amountCents, props.currency)} ${fr.balances.to} ${s.toName}`}
-                />
-              </ListItem>
-            ))}
-          </List>
+          <Stack spacing={1}>
+            {settlements.map((s, i) => {
+              const key = `${s.fromId}->${s.toId}`;
+              return (
+                <Card key={`${i}-${key}`} variant="outlined">
+                  <CardContent>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ mb: 1 }}
+                    >
+                      <Typography variant="subtitle1" sx={{ flex: 1 }}>
+                        {s.fromName} → {s.toName}
+                      </Typography>
+                      <Typography variant="subtitle1" fontWeight={600}>
+                        {formatMoneyCents(s.amountCents, props.currency)}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" justifyContent="flex-end">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<CheckIcon />}
+                        onClick={() => void onSettle(s)}
+                        disabled={busyKey != null}
+                      >
+                        {fr.balances.settle}
+                      </Button>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Stack>
         </Box>
       )}
     </Stack>

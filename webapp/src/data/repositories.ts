@@ -193,6 +193,36 @@ export async function deleteExpense(expense: Expense): Promise<void> {
   });
 }
 
+/**
+ * Materialises a suggested settlement as a real expense tagged
+ * `isSettlement = true`. Mirrors Android's
+ * EventDetailViewModel.recordSettlement: payerId is the debtor, the
+ * sole share goes to the creditor, so once it lands the balance
+ * between them collapses to zero. Tagged so the balances + category
+ * stats use cases filter it out — settlements aren't shared costs.
+ */
+export async function recordSettlement(
+  eventId: string,
+  fromId: string,
+  fromName: string,
+  toId: string,
+  toName: string,
+  amountCents: number,
+): Promise<Expense> {
+  return upsertExpense({
+    id: "",
+    eventId,
+    title: `Remboursement ${fromName} → ${toName}`,
+    amountCents,
+    payerId: fromId,
+    date: Date.now(),
+    shares: [{ participantId: toId, amountCents }],
+    items: [],
+    isSettlement: true,
+    categoryId: null,
+  });
+}
+
 export async function listExpenses(eventId: string): Promise<Expense[]> {
   const xs = await getDb().expenses.where("eventId").equals(eventId).toArray();
   // Most recent first — matches Android timeline order.
