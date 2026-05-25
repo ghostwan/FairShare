@@ -5,6 +5,7 @@ import { EventDetailScreen } from "./presentation/screens/EventDetailScreen";
 import { AddExpenseScreen } from "./presentation/screens/AddExpenseScreen";
 import { InviteScreen } from "./presentation/screens/InviteScreen";
 import { JoinScreen } from "./presentation/screens/JoinScreen";
+import { ReceiptScanScreen } from "./presentation/screens/ReceiptScanScreen";
 import { SettingsScreen } from "./presentation/screens/SettingsScreen";
 
 /**
@@ -34,6 +35,10 @@ export function App() {
           element={<AddExpenseScreen />}
         />
         <Route path="/event/:eventId/invite" element={<InviteScreen />} />
+        <Route
+          path="/event/:eventId/receipt"
+          element={<ReceiptScanScreen />}
+        />
         <Route path="/join" element={<JoinScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
       </Routes>

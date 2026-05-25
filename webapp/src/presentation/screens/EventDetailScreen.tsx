@@ -191,13 +191,22 @@ function ExpensesTab(props: {
 
   return (
     <Stack spacing={1}>
-      <Button
-        variant="contained"
-        startIcon={<AddIcon />}
-        onClick={() => navigate(`/event/${props.eventId}/expense/new`)}
-      >
-        {fr.expenses.add}
-      </Button>
+      <Stack direction="row" spacing={1}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => navigate(`/event/${props.eventId}/expense/new`)}
+          fullWidth
+        >
+          {fr.expenses.add}
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={() => navigate(`/event/${props.eventId}/receipt`)}
+        >
+          {fr.receipt.scan}
+        </Button>
+      </Stack>
       <List dense>
         {props.expenses.map((e) => {
           const payer = props.participantsById.get(e.payerId);
