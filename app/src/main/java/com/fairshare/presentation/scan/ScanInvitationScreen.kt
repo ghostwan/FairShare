@@ -197,7 +197,7 @@ private fun processFrame(
             }
             val url = barcodes
                 .mapNotNull { it.rawValue }
-                .firstOrNull { it.startsWith("fairshare://") }
+                .firstOrNull { isFairshareInvitation(it) }
             if (url != null && dispatched.compareAndSet(false, true)) {
                 Log.i(TAG, "Dispatching scanned URL (len=${url.length})")
                 onScanned(url)
@@ -206,5 +206,23 @@ private fun processFrame(
         .addOnFailureListener { e -> Log.w(TAG, "Barcode scan failed", e) }
         .addOnCompleteListener { proxy.close() }
 }
+
+/**
+ * Recognises both invitation URL flavours we emit (DESIGN.md §7):
+ *
+ *   - `fairshare://join?…` (legacy custom scheme, in-app deep link)
+ *   - `https://<any-host>/join?…` (default since the webapp shipped,
+ *     so iOS Camera and Android Lens open it natively)
+ *
+ * The actual host is intentionally not pinned — staging deployments
+ * (`*.pages.dev` previews) and self-hosted mirrors must work without
+ * a code change. The codec then validates the query params.
+ */
+private fun isFairshareInvitation(raw: String): Boolean {
+    if (raw.startsWith("fairshare://join?")) return true
+    return INVITATION_HTTPS_REGEX.containsMatchIn(raw)
+}
+
+private val INVITATION_HTTPS_REGEX = Regex("^https?://[^/?#]+/join\\?")
 
 private const val TAG = "ScanInvitation"
