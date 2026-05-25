@@ -38,6 +38,12 @@ export const fr = {
     balances: "Balances",
     participants: "Participants",
   },
+  stats: {
+    title: "Statistiques",
+    total: "Total",
+    uncategorized: "Sans catégorie",
+    empty: "Aucune dépense à statistiquer.",
+  },
   eventSettings: {
     title: "Réglages de l'événement",
     categoriesSection: "Catégories",

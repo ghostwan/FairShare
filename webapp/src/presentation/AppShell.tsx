@@ -12,6 +12,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SettingsIcon from "@mui/icons-material/Settings";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import { Settings } from "@/data/settings";
 import { getDb } from "@/data/db";
 import { syncNow } from "@/sync/coordinator";
@@ -35,6 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isRoot = location.pathname === "/" || location.pathname === "";
   const onEventSettings =
     eventId != null && location.pathname.endsWith("/settings");
+  const onStats =
+    eventId != null && location.pathname.endsWith("/stats");
 
   // Visibility-driven catch-up: every time the user comes back to the
   // tab (or the PWA), pull from the Worker so the event view stays
@@ -108,6 +111,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ) : (
                 <RefreshIcon />
               )}
+            </IconButton>
+          )}
+          {eventId && !onStats && (
+            <IconButton
+              color="inherit"
+              aria-label="stats"
+              onClick={() => navigate(`/event/${eventId}/stats`)}
+            >
+              <BarChartIcon />
             </IconButton>
           )}
           {eventId && !onEventSettings && (

@@ -8,6 +8,7 @@ import { InviteScreen } from "./presentation/screens/InviteScreen";
 import { JoinScreen } from "./presentation/screens/JoinScreen";
 import { ReceiptScanScreen } from "./presentation/screens/ReceiptScanScreen";
 import { SettingsScreen } from "./presentation/screens/SettingsScreen";
+import { StatsScreen } from "./presentation/screens/StatsScreen";
 
 /**
  * Top-level routing. The shell stays mounted across navigations so the
@@ -40,6 +41,7 @@ export function App() {
           path="/event/:eventId/settings"
           element={<EventSettingsScreen />}
         />
+        <Route path="/event/:eventId/stats" element={<StatsScreen />} />
         <Route
           path="/event/:eventId/receipt"
           element={<ReceiptScanScreen />}
