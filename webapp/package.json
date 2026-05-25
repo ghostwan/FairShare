@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium webkit",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc --noEmit",
     "deploy": "wrangler pages deploy dist --project-name fairshare-web"
   },
   "dependencies": {
