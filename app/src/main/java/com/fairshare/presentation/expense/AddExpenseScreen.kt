@@ -142,6 +142,24 @@ fun AddExpenseScreen(
                     },
                 )
             }
+            item {
+                // Optional toggle to flag this entry as a manual
+                // reimbursement (e.g. "Alice paid Bob 20€ in cash") so
+                // the timeline shows it with the SwapHoriz icon and
+                // doesn't treat it as a regular shared expense.
+                ListItem(
+                    headlineContent = { Text("Remboursement") },
+                    supportingContent = {
+                        Text("Marquer comme règlement entre deux personnes")
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.isSettlement,
+                            onCheckedChange = vm::setSettlement,
+                        )
+                    },
+                )
+            }
             state.error?.let {
                 item { Text(it, color = MaterialTheme.colorScheme.error) }
             }
