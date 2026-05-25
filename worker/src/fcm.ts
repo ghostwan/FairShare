@@ -147,8 +147,13 @@ export async function fcmFanOut(
                 },
                 body,
             });
-            if (resp.ok) return { ok: true as const };
+            const tokPrefix = token.slice(0, 12);
+            if (resp.ok) {
+                console.log(`fcm:ok token=${tokPrefix}…`);
+                return { ok: true as const };
+            }
             const text = await resp.text();
+            console.log(`fcm:fail token=${tokPrefix}… status=${resp.status} body=${text.slice(0, 300)}`);
             const isStale = resp.status === 404 ||
                 /UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/.test(text);
             return { ok: false as const, isStale, token };
