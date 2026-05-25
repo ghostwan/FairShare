@@ -34,7 +34,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class ScanReceiptState(
-    val title: String = "Ticket de caisse",
+    val title: String = DEFAULT_TITLE,
     val payerId: String? = null,
     val items: List<ReceiptItem> = emptyList(),
     val isScanning: Boolean = false,
@@ -47,6 +47,8 @@ data class ScanReceiptState(
      */
     val lastImageUri: Uri? = null,
 )
+
+internal const val DEFAULT_TITLE = "Ticket de caisse"
 
 @HiltViewModel
 class ScanReceiptViewModel @Inject constructor(
@@ -108,8 +110,15 @@ class ScanReceiptViewModel @Inject constructor(
                 // Read the current setting *now* — cannot rely on the cold StateFlow's
                 // initial value because nothing in this VM stays subscribed to it.
                 val expand = settings.expandQuantities.first()
-                val expanded = expandReceiptQuantities(parsed, expand)
-                _state.update { it.copy(items = expanded, isScanning = false) }
+                val expanded = expandReceiptQuantities(parsed.items, expand)
+                _state.update { s ->
+                    // Pre-fill the title with the merchant only if the user hasn't
+                    // touched the default — never overwrite a manual edit.
+                    val newTitle = parsed.merchant
+                        ?.takeIf { s.title.isBlank() || s.title == DEFAULT_TITLE }
+                        ?: s.title
+                    s.copy(items = expanded, title = newTitle, isScanning = false)
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(isScanning = false, error = e.message ?: "Erreur OCR") }
             }
@@ -162,7 +171,7 @@ class ScanReceiptViewModel @Inject constructor(
                 }
                 expenseRepository.add(
                     Expense(
-                        eventId = eventId, title = s.title.ifBlank { "Ticket de caisse" },
+                        eventId = eventId, title = s.title.ifBlank { DEFAULT_TITLE },
                         amountCents = total, payerId = payer, shares = shares,
                         items = itemDetails,
                     )

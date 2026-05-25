@@ -3,6 +3,7 @@ package com.fairshare.data.ocr
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.fairshare.domain.model.ParsedReceipt
 import com.fairshare.domain.model.ReceiptItem
 import com.fairshare.domain.repository.ReceiptParser
 import com.google.mlkit.vision.common.InputImage
@@ -41,7 +42,7 @@ class MlKitReceiptParser @Inject constructor(
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     }
 
-    override suspend fun parse(imageUri: Uri): List<ReceiptItem> {
+    override suspend fun parse(imageUri: Uri): ParsedReceipt {
         val image = InputImage.fromFilePath(context, imageUri)
         val visionText = suspendCancellableCoroutine<Text> { cont ->
             recognizer.process(image)
@@ -63,7 +64,10 @@ class MlKitReceiptParser @Inject constructor(
             }
             .toList()
         dumpTokensForDebug(tokens)
-        return extractItems(tokens)
+        return ParsedReceipt(
+            merchant = extractMerchant(tokens),
+            items = extractItems(tokens),
+        )
     }
 
     /**
@@ -127,6 +131,155 @@ class MlKitReceiptParser @Inject constructor(
         )
 
         data class Token(val cx: Int, val cy: Int, val height: Int, val text: String)
+
+        /**
+         * Extracts the merchant name (shop / restaurant name printed at the top
+         * of the receipt) using geometric heuristics on the raw OCR tokens.
+         *
+         * Algorithm:
+         *  1. Find the first row that contains a price (the "body" frontier).
+         *     Everything above it is header.
+         *  2. Cluster header tokens into rows by Y proximity.
+         *  3. Score each row by `(rowHeight / medianHeight) × alphaRatio`,
+         *     then penalise rows matching header noise (SIRET, TVA, postal
+         *     codes, phone numbers, dates, URLs, …).
+         *  4. Pick the contiguous block of 1–3 highest-scoring rows above the
+         *     body frontier; join their tokens by cx and Title-Case the result.
+         *
+         * Returns null when no plausible merchant could be extracted, so the
+         * caller leaves the default expense title untouched.
+         */
+        internal fun extractMerchant(tokens: List<Token>): String? {
+            if (tokens.isEmpty()) return null
+            val medianHeight = tokens.map { it.height }.sorted()[tokens.size / 2]
+                .coerceAtLeast(1)
+            val rowTolerance = (medianHeight * 0.6).toInt().coerceAtLeast(6)
+
+            // Cluster all tokens into rows (anchor-walk, same as extractItems).
+            val sortedByY = tokens.sortedBy { it.cy }
+            val rows = mutableListOf<MutableList<Token>>()
+            val anchors = mutableListOf<Int>()
+            for (t in sortedByY) {
+                val last = rows.lastIndex
+                if (last >= 0 && abs(t.cy - anchors[last]) <= rowTolerance) {
+                    rows[last] += t
+                } else {
+                    rows += mutableListOf(t)
+                    anchors += t.cy
+                }
+            }
+            if (rows.isEmpty()) return null
+
+            fun rowHasPrice(row: List<Token>): Boolean =
+                row.any { PRICE_REGEX.matches(it.text.trim()) }
+
+            // 1. Find body frontier: index of first row carrying a price token.
+            val firstPriceIdx = rows.indexOfFirst { rowHasPrice(it) }
+            val headerRows = if (firstPriceIdx <= 0) emptyList() else rows.subList(0, firstPriceIdx)
+            if (headerRows.isEmpty()) return null
+
+            fun isHeaderNoise(text: String): Boolean {
+                val t = text.trim()
+                if (t.length < 2) return true
+                return HEADER_NOISE_PATTERNS.any { it.containsMatchIn(t) }
+            }
+
+            // 2. Score each header row.
+            data class Scored(val idx: Int, val score: Double, val text: String)
+            val scored = headerRows.mapIndexedNotNull { idx, row ->
+                // Drop currency / single-character tokens.
+                val meaningful = row.filterNot { it.text.trim() in CURRENCY_SYMBOLS }
+                if (meaningful.isEmpty()) return@mapIndexedNotNull null
+                val joined = meaningful
+                    .sortedBy { it.cx }
+                    .joinToString(" ") { it.text.trim() }
+                    .trim()
+                if (joined.length < 3) return@mapIndexedNotNull null
+                if (isHeaderNoise(joined)) return@mapIndexedNotNull null
+                val letters = joined.count { it.isLetter() }
+                val digits = joined.count { it.isDigit() }
+                if (letters < 3) return@mapIndexedNotNull null
+                // Mostly-digits row (address number, phone, ticket #, …).
+                if (digits > letters) return@mapIndexedNotNull null
+
+                val rowHeight = meaningful.maxOf { it.height }
+                val sizeScore = rowHeight.toDouble() / medianHeight
+                val alphaRatio = letters.toDouble() / (letters + digits).coerceAtLeast(1)
+                val score = sizeScore * alphaRatio
+                Scored(idx, score, joined)
+            }
+            if (scored.isEmpty()) return null
+
+            // 3. Pick contiguous high-scoring block (top 1–3 rows by score, but
+            //    only if they sit close together vertically — within a few rows
+            //    of each other in the header).
+            val best = scored.maxByOrNull { it.score } ?: return null
+            // Require a minimum quality: the winning row must be at least
+            // medianHeight-tall on average. Lower bound also dodges short
+            // ALL-CAPS noise like "TEL".
+            if (best.score < 0.9) return null
+            val acceptedIdx = mutableSetOf(best.idx)
+            // Extend down (merchant lines on multi-line names like
+            // "CRÊPERIE / DE LA POSTE" are stacked).
+            for (s in scored.filter { it.idx != best.idx }.sortedBy { it.idx }) {
+                if (acceptedIdx.size >= 3) break
+                // Adjacent (≤ 1 row gap) to an already-accepted row, and
+                // similarly large (score ≥ best × 0.6) → merge.
+                val adjacent = acceptedIdx.any { abs(it - s.idx) <= 1 }
+                if (adjacent && s.score >= best.score * 0.6) acceptedIdx += s.idx
+            }
+            val pieces = scored.filter { it.idx in acceptedIdx }
+                .sortedBy { it.idx }
+                .map { it.text }
+            val raw = pieces.joinToString(" ").trim()
+            return toTitleCase(raw).takeIf { it.length >= 3 }
+        }
+
+        /** "CREPERIE DE LA POSTE" → "Creperie De La Poste". Hyphens kept. */
+        internal fun toTitleCase(s: String): String {
+            val sb = StringBuilder(s.length)
+            var prevAlnum = false
+            for (c in s) {
+                if (c.isLetter()) {
+                    sb.append(if (prevAlnum) c.lowercaseChar() else c.uppercaseChar())
+                    prevAlnum = true
+                } else {
+                    sb.append(c)
+                    prevAlnum = c.isDigit()
+                }
+            }
+            return sb.toString()
+        }
+
+        /** Patterns that disqualify a header row from being a merchant name. */
+        private val HEADER_NOISE_PATTERNS = listOf(
+            Regex("""(?i)\bsiret\b"""),
+            Regex("""(?i)\btva\b"""),
+            Regex("""(?i)\bnaf\b"""),
+            Regex("""(?i)\bape\b"""),
+            Regex("""(?i)\brcs\b"""),
+            Regex("""(?i)\bsiren\b"""),
+            Regex("""(?i)\bt(é|e)l\b|^t(é|e)l[\.:]"""),
+            Regex("""(?i)\bfax\b"""),
+            Regex("""(?i)\bemail\b|@"""),
+            Regex("""(?i)\bwww\.|https?://"""),
+            // French postal code + city: "29680 ROSCOFF"
+            Regex("""^\d{5}\s+\S"""),
+            // Date: 12/05/2024, 2024-05-12, etc.
+            Regex("""\b\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}\b"""),
+            // Time: 17:53
+            Regex("""\b\d{1,2}[:h]\d{2}\b"""),
+            // Phone number (≥ 7 digits in a row, possibly spaced).
+            Regex("""(?:\d[\s.\-]*){7,}"""),
+            // Receipt metadata
+            Regex("""(?i)\bticket\b|\bn[°o]\s*\d"""),
+            Regex("""(?i)\bcaisse\b|\bserveur\b|\bcaissier\b"""),
+            Regex("""(?i)\btable\b\s*\d"""),
+            Regex("""(?i)\bcouvert"""),
+            Regex("""(?i)\bdocument\b"""),
+            // Days of week (header sometimes prints date as "DIMANCHE 10-05-2026")
+            Regex("""(?i)\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b"""),
+        )
 
         fun extractItems(tokens: List<Token>): List<ReceiptItem> {
             if (tokens.isEmpty()) return emptyList()

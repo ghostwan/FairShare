@@ -2,6 +2,7 @@ package com.fairshare.data.ocr
 
 import com.fairshare.data.ocr.MlKitReceiptParser.Companion.Token
 import com.fairshare.data.ocr.MlKitReceiptParser.Companion.extractItems
+import com.fairshare.data.ocr.MlKitReceiptParser.Companion.extractMerchant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -478,5 +479,43 @@ class MlKitReceiptParserFixtureTest {
         // Grand total (56,30 €) must not appear as an item.
         val totalLeaked = items.count { it.priceCents == 5630L }
         assertEquals("Grand total leaked as item", 0, totalLeaked)
+    }
+
+    /**
+     * Merchant extraction probe across every fixture. The header geometry
+     * varies a lot (SIRET / TVA / printer status / multi-line names), so we
+     * assert on loose substrings of the expected brand name. Two fixtures
+     * (bug-01-two-price-columns, bug-03) have heavily mangled OCR for the
+     * merchant line — we still expect the parser to pick a recognisable
+     * fragment rather than null.
+     */
+    @Test
+    fun `extractMerchant — every fixture yields a recognisable merchant name`() {
+        data class Case(val fixture: String, val mustContain: List<String>)
+        val cases = listOf(
+            // "LA PERROZIENNE" header line at the top.
+            Case("bug-01-merged-lines.log", listOf("Perrozienne")),
+            // No actual merchant header in this dump — only SIRET / APE / TPV.
+            // Best-effort = the "TPV: PERROZIENNE-C1" printer status line,
+            // which still contains the brand fragment.
+            Case("bug-01-two-price-columns.log", listOf("Perrozienne")),
+            Case("bug-02-creperie.log", listOf("Creperie", "Poste")),
+            // OCR badly mangles "CÔTE RIVIÈRE" → "Üté Riviere"; we just want
+            // the recognisable "Riviere" fragment.
+            Case("bug-03-multiline-cote-riviere.log", listOf("Riviere")),
+            // "À L'AISE BREIZH DINAN" → OCR loses the L', keeps "Breizh".
+            Case("bug-04-multiline-with-sku.log", listOf("Breizh")),
+            Case("bug-05-ghost-line.log", listOf("Creperie", "Poste")),
+        )
+        cases.forEach { case ->
+            val merchant = extractMerchant(loadFixture(case.fixture))
+            assertNotNull("extractMerchant returned null for ${case.fixture}", merchant)
+            case.mustContain.forEach { needle ->
+                assertTrue(
+                    "Merchant '$merchant' for ${case.fixture} should contain '$needle'",
+                    merchant!!.contains(needle, ignoreCase = true),
+                )
+            }
+        }
     }
 }

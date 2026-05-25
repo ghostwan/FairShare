@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Base64
 import android.util.Log
+import com.fairshare.domain.model.ParsedReceipt
 import com.fairshare.domain.model.ReceiptItem
 import com.fairshare.domain.repository.ReceiptParser
 import com.fairshare.domain.repository.SettingsRepository
@@ -53,7 +54,7 @@ class GeminiReceiptParser @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    override suspend fun parse(imageUri: Uri): List<ReceiptItem> = withContext(Dispatchers.IO) {
+    override suspend fun parse(imageUri: Uri): ParsedReceipt = withContext(Dispatchers.IO) {
         val apiKey = settings.geminiApiKey.first().trim()
         val model = settings.geminiModel.first().trim().ifBlank { "gemini-2.5-flash" }
         require(apiKey.isNotEmpty()) {
@@ -101,7 +102,7 @@ class GeminiReceiptParser @Inject constructor(
     }.getOrNull()
 
     private fun buildPayload(base64Image: String): String {
-        // Schema: an array of { label: string, quantity: int, priceCents: int }
+        // Schema: { merchant: string?, items: array of { label, quantity, priceCents } }
         val root = buildJsonObject {
             putJsonArray("contents") {
                 addJsonObject {
@@ -121,16 +122,25 @@ class GeminiReceiptParser @Inject constructor(
             putJsonObject("generationConfig") {
                 put("responseMimeType", "application/json")
                 putJsonObject("responseSchema") {
-                    put("type", "ARRAY")
-                    putJsonObject("items") {
-                        put("type", "OBJECT")
-                        putJsonArray("required") {
-                            add("label"); add("quantity"); add("priceCents")
-                        }
-                        putJsonObject("properties") {
-                            putJsonObject("label") { put("type", "STRING") }
-                            putJsonObject("quantity") { put("type", "INTEGER") }
-                            putJsonObject("priceCents") { put("type", "INTEGER") }
+                    put("type", "OBJECT")
+                    putJsonArray("required") {
+                        add("items")
+                    }
+                    putJsonObject("properties") {
+                        putJsonObject("merchant") { put("type", "STRING") }
+                        putJsonObject("items") {
+                            put("type", "ARRAY")
+                            putJsonObject("items") {
+                                put("type", "OBJECT")
+                                putJsonArray("required") {
+                                    add("label"); add("quantity"); add("priceCents")
+                                }
+                                putJsonObject("properties") {
+                                    putJsonObject("label") { put("type", "STRING") }
+                                    putJsonObject("quantity") { put("type", "INTEGER") }
+                                    putJsonObject("priceCents") { put("type", "INTEGER") }
+                                }
+                            }
                         }
                     }
                 }
@@ -139,7 +149,7 @@ class GeminiReceiptParser @Inject constructor(
         return root.toString()
     }
 
-    private fun parseResponse(body: String): List<ReceiptItem> {
+    private fun parseResponse(body: String): ParsedReceipt {
         val root = json.parseToJsonElement(body).jsonObject
         val text = root["candidates"]
             ?.jsonArray?.firstOrNull()
@@ -151,15 +161,19 @@ class GeminiReceiptParser @Inject constructor(
             ?: error("Réponse Gemini vide")
 
         // The text payload itself is JSON (responseMimeType=application/json).
-        val items = json.parseToJsonElement(text)
-        val array: JsonArray = when (items) {
-            is JsonArray -> items
-            is JsonObject -> items["items"]?.jsonArray
-                ?: items["receipt"]?.jsonArray
-                ?: error("JSON inattendu — pas de tableau d'articles")
+        val parsed = json.parseToJsonElement(text)
+        val (merchant, array) = when (parsed) {
+            is JsonArray -> null to parsed
+            is JsonObject -> {
+                val m = parsed["merchant"]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() }
+                val a = parsed["items"]?.jsonArray
+                    ?: parsed["receipt"]?.jsonArray
+                    ?: error("JSON inattendu — pas de tableau d'articles")
+                m to a
+            }
             else -> error("JSON inattendu — pas de tableau")
         }
-        return array.mapNotNull { el ->
+        val items = array.mapNotNull { el ->
             val obj = el.jsonObject
             val label = obj["label"]?.jsonPrimitive?.content?.trim().orEmpty()
             val quantity = obj["quantity"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
@@ -172,6 +186,7 @@ class GeminiReceiptParser @Inject constructor(
                 quantity = quantity.coerceAtLeast(1),
             )
         }
+        return ParsedReceipt(merchant = merchant, items = items)
     }
 
     companion object {
@@ -179,6 +194,8 @@ class GeminiReceiptParser @Inject constructor(
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val PROMPT = """
 Tu reçois la photo d'un ticket de caisse (français, devise EUR).
+Identifie le nom du commerçant/restaurant imprimé en en-tête du ticket et renvoie-le
+sous la clé "merchant" (string en Title Case, ou null si illisible).
 Extrais STRICTEMENT la liste des articles consommés (pas les sous-totaux,
 totaux, taxes, remises, services, infos établissement, dates ou numéros de table).
 Pour chaque article, renvoie :
@@ -187,7 +204,7 @@ Pour chaque article, renvoie :
   - "priceCents" : prix TOTAL de la ligne en centimes d'euro (entier).
                    Exemple : "2 x Bière 11,00" → priceCents=1100, quantity=2.
                    Exemple : "Plat du jour 14,50" → priceCents=1450, quantity=1.
-Réponds UNIQUEMENT avec un tableau JSON conforme au schéma, sans texte autour.
+Réponds UNIQUEMENT avec un objet JSON conforme au schéma {merchant, items}, sans texte autour.
 """
     }
 }
