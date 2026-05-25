@@ -72,15 +72,53 @@ const MAX_DEVICE_ID_LEN = 128;
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        // CORS preflight: respond before routing. Browsers send OPTIONS
+        // with `Access-Control-Request-Headers: authorization, content-type`
+        // before any cross-origin POST/GET that carries the Authorization
+        // header. Without a 2xx here the actual request never goes out
+        // and the JS fetch fails with a generic TypeError ("network
+        // error"). Native Android clients don't preflight, which is why
+        // this only ever broke the webapp.
+        if (request.method === "OPTIONS") {
+            return withCors(request, new Response(null, { status: 204 }));
+        }
         try {
-            return await route(request, env, ctx);
+            const res = await route(request, env, ctx);
+            return withCors(request, res);
         } catch (err) {
             // Last-resort guard so a code bug never leaks a stack trace to clients.
             console.error("Unhandled error", err);
-            return jsonError(500, "internal_error");
+            return withCors(request, jsonError(500, "internal_error"));
         }
     },
 };
+
+/**
+ * Echo the request Origin (or `*` for tools without one) and advertise
+ * the methods + headers used by the webapp. We don't use cookies so
+ * `Access-Control-Allow-Credentials` stays off — the bearer travels in
+ * Authorization, which is fine to expose to any origin.
+ */
+function withCors(request: Request, res: Response): Response {
+    const origin = request.headers.get("origin") ?? "*";
+    const headers = new Headers(res.headers);
+    headers.set("access-control-allow-origin", origin);
+    headers.set("vary", "Origin");
+    headers.set(
+        "access-control-allow-methods",
+        "GET, POST, PUT, DELETE, OPTIONS",
+    );
+    headers.set(
+        "access-control-allow-headers",
+        "authorization, content-type",
+    );
+    headers.set("access-control-max-age", "86400");
+    return new Response(res.body, {
+        status: res.status,
+        statusText: res.statusText,
+        headers,
+    });
+}
 
 async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
