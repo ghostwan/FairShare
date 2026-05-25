@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,6 +35,7 @@ import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.toDayHeaderLabel
 import com.fairshare.presentation.common.toStartOfDay
+import kotlinx.coroutines.launch
 
 private enum class Tab(val label: String) {
     Expenses("Dépenses"),
@@ -53,7 +56,9 @@ fun EventDetailScreen(
 ) {
     val state by vm.state.collectAsState()
     val isRefreshing by vm.isRefreshing.collectAsState()
-    var tab by rememberSaveable { mutableStateOf(Tab.Expenses) }
+    val pagerState = rememberPagerState(initialPage = 0) { Tab.entries.size }
+    val tab = Tab.entries[pagerState.currentPage]
+    val pagerScope = rememberCoroutineScope()
     var showAddPerson by rememberSaveable { mutableStateOf(false) }
     var showRename by rememberSaveable { mutableStateOf(false) }
     val currency = state.event?.currency ?: "EUR"
@@ -109,33 +114,44 @@ fun EventDetailScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             Column(Modifier.fillMaxSize()) {
-                TabRow(selectedTabIndex = tab.ordinal) {
-                    Tab.entries.forEach { t ->
+                TabRow(selectedTabIndex = pagerState.currentPage) {
+                    Tab.entries.forEachIndexed { index, t ->
                         androidx.compose.material3.Tab(
-                            selected = tab == t,
-                            onClick = { tab = t },
+                            selected = pagerState.currentPage == index,
+                            onClick = { pagerScope.launch { pagerState.animateScrollToPage(index) } },
                             text = { Text(t.label) },
                         )
                     }
                 }
-                when (tab) {
-                    Tab.Expenses -> if (state.loaded) ExpensesList(
-                        state = state,
-                        currency = currency,
-                        onClick = { id -> onEditExpense(vm.eventId, id) },
-                        onDelete = vm::removeExpense,
-                    ) else Box(Modifier.fillMaxSize())
-                    Tab.Balances -> if (state.loaded) BalancesList(state, currency, onSettle = vm::recordSettlement)
-                        else Box(Modifier.fillMaxSize())
-                    Tab.Stats -> if (state.loaded) StatsList(state, currency)
-                        else Box(Modifier.fillMaxSize())
-                    Tab.Participants -> if (state.loaded) ParticipantsList(
-                            state = state,
-                            currency = currency,
-                            onRemove = vm::removeParticipant,
-                            onRename = vm::renameParticipant,
-                        )
-                        else Box(Modifier.fillMaxSize())
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    // Each page must explicitly fill the pager slot,
+                    // otherwise an intrinsically-sized child (e.g. a
+                    // LazyColumn with few items) gets centered in the
+                    // available height by the pager layout.
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
+                        when (Tab.entries[page]) {
+                            Tab.Expenses -> if (state.loaded) ExpensesList(
+                                state = state,
+                                currency = currency,
+                                onClick = { id -> onEditExpense(vm.eventId, id) },
+                                onDelete = vm::removeExpense,
+                            ) else Box(Modifier.fillMaxSize())
+                            Tab.Balances -> if (state.loaded) BalancesList(state, currency, onSettle = vm::recordSettlement)
+                                else Box(Modifier.fillMaxSize())
+                            Tab.Stats -> if (state.loaded) StatsList(state, currency)
+                                else Box(Modifier.fillMaxSize())
+                            Tab.Participants -> if (state.loaded) ParticipantsList(
+                                    state = state,
+                                    currency = currency,
+                                    onRemove = vm::removeParticipant,
+                                    onRename = vm::renameParticipant,
+                                )
+                                else Box(Modifier.fillMaxSize())
+                        }
+                    }
                 }
             }
         }
