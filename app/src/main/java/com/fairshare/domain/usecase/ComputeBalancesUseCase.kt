@@ -24,6 +24,21 @@ class ComputeBalancesUseCase {
         }
     }
 
+    /**
+     * Sum of amounts a participant paid as the expense payer, keyed by
+     * participant id. Settlements ([Expense.isSettlement]) are excluded
+     * because they are internal transfers, not actual expenses, so they
+     * would otherwise inflate the "total spent" displayed to the user.
+     */
+    fun totalsPaidBy(expenses: List<Expense>): Map<String, Long> {
+        val totals = mutableMapOf<String, Long>()
+        expenses.forEach { e ->
+            if (e.isSettlement) return@forEach
+            totals[e.payerId] = (totals[e.payerId] ?: 0L) + e.amountCents
+        }
+        return totals
+    }
+
     /** Greedy minimal-transactions settlement. */
     fun settlements(balances: List<Balance>): List<Settlement> {
         // Work on a mutable copy

@@ -129,7 +129,12 @@ fun EventDetailScreen(
                         else Box(Modifier.fillMaxSize())
                     Tab.Stats -> if (state.loaded) StatsList(state, currency)
                         else Box(Modifier.fillMaxSize())
-                    Tab.Participants -> if (state.loaded) ParticipantsList(state, onRemove = vm::removeParticipant)
+                    Tab.Participants -> if (state.loaded) ParticipantsList(
+                            state = state,
+                            currency = currency,
+                            onRemove = vm::removeParticipant,
+                            onRename = vm::renameParticipant,
+                        )
                         else Box(Modifier.fillMaxSize())
                 }
             }
@@ -415,21 +420,69 @@ private fun CategoryStatRow(
 }
 
 @Composable
-private fun ParticipantsList(state: EventDetailState, onRemove: (String) -> Unit) {
+private fun ParticipantsList(
+    state: EventDetailState,
+    currency: String,
+    onRemove: (String) -> Unit,
+    onRename: (id: String, newName: String) -> Unit,
+) {
     if (state.participants.isEmpty()) {
         EmptyHint("Aucun participant.")
         return
     }
+    var renaming by remember { mutableStateOf<com.fairshare.domain.model.Participant?>(null) }
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         items(state.participants, key = { it.id }) { p ->
+            val paid = state.paidByParticipant[p.id] ?: 0L
             ListItem(
                 headlineContent = { Text(p.name) },
+                supportingContent = {
+                    Text(
+                        if (paid > 0L) "Total payé : ${paid.centsToString(currency)}"
+                        else "Aucune dépense payée"
+                    )
+                },
                 trailingContent = {
-                    IconButton(onClick = { onRemove(p.id) }) { Icon(Icons.Default.Delete, null) }
+                    Row {
+                        IconButton(onClick = { renaming = p }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Renommer")
+                        }
+                        IconButton(onClick = { onRemove(p.id) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Supprimer")
+                        }
+                    }
                 },
             )
             HorizontalDivider()
         }
+    }
+
+    renaming?.let { target ->
+        var name by rememberSaveable(target.id) { mutableStateOf(target.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Renommer le participant") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nom") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank() && name.trim() != target.name,
+                    onClick = {
+                        onRename(target.id, name)
+                        renaming = null
+                    },
+                ) { Text("Enregistrer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renaming = null }) { Text("Annuler") }
+            },
+        )
     }
 }
 

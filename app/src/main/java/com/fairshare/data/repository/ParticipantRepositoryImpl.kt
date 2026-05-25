@@ -47,6 +47,14 @@ class ParticipantRepositoryImpl @Inject constructor(
         return id
     }
 
+    override suspend fun update(participant: Participant) {
+        require(participant.id.isNotBlank()) { "update() requires a non-blank participant id" }
+        applier.applyLocal(
+            eventId = participant.eventId,
+            payload = OpPayload.ParticipantUpsert(participant.toSnapshot()),
+        )
+    }
+
     override suspend fun delete(id: String) {
         val existing = dao.getById(id) ?: return
         applier.applyLocal(

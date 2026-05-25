@@ -51,6 +51,12 @@ data class EventDetailState(
      */
     val categoryStats: List<CategoryStat> = emptyList(),
     /**
+     * Sum of expenses paid by each participant (settlements excluded),
+     * keyed by participant id. Powers the totals shown on the
+     * Participants tab. Defaults to 0 for participants who never paid.
+     */
+    val paidByParticipant: Map<String, Long> = emptyMap(),
+    /**
      * `true` after the first emission of the upstream `combine`. Lets
      * the screen tell "still loading" from "loaded with empty data" so
      * empty-state placeholders don't flash during the cold start.
@@ -82,6 +88,7 @@ class EventDetailViewModel @Inject constructor(
         val balances = computeBalances.balances(participants, expenses)
         val settlements = computeBalances.settlements(balances)
         val categoryStats = computeCategoryStats(expenses, customCategories)
+        val paidByParticipant = computeBalances.totalsPaidBy(expenses)
         EventDetailState(
             event = event,
             participants = participants,
@@ -90,6 +97,7 @@ class EventDetailViewModel @Inject constructor(
             settlements = settlements,
             customCategories = customCategories,
             categoryStats = categoryStats,
+            paidByParticipant = paidByParticipant,
             loaded = true,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EventDetailState())
@@ -149,6 +157,23 @@ class EventDetailViewModel @Inject constructor(
         if (name.isBlank()) return
         viewModelScope.launch {
             participantRepository.add(Participant(eventId = eventId, name = name.trim()))
+            SyncWorker.enqueueOneShot(context, eventId)
+        }
+    }
+
+    /**
+     * Renames an existing participant. No-ops on a blank name or when
+     * the trimmed name matches the current one (avoids generating an
+     * empty op). The change propagates as a ParticipantUpsert through
+     * the standard LWW sync pipeline.
+     */
+    fun renameParticipant(id: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val current = state.value.participants.firstOrNull { it.id == id } ?: return@launch
+            if (current.name == trimmed) return@launch
+            participantRepository.update(current.copy(name = trimmed))
             SyncWorker.enqueueOneShot(context, eventId)
         }
     }
