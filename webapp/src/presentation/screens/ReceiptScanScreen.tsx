@@ -3,29 +3,22 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
   CircularProgress,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { fr } from "@/i18n/fr";
 import { getDb } from "@/data/db";
 import { Settings } from "@/data/settings";
 import { upsertExpense } from "@/data/repositories";
-import type { Expense, ExpenseItem, Participant } from "@/core/domain/models";
+import type { Expense, ExpenseItem } from "@/core/domain/models";
 import { assignReceiptItems } from "@/core/domain/receiptAssign";
 import { formatMoneyCents } from "../format";
+import { ReceiptItemsEditor } from "../components/ReceiptItemsEditor";
 
 /**
  * Receipt scan flow: snap a photo (or pick a file), POST it base64-
@@ -118,23 +111,6 @@ export function ReceiptScanScreen() {
   };
 
   const totalCents = (parsed?.items ?? []).reduce((s, it) => s + it.priceCents, 0);
-
-  const toggleAssignee = (itemId: string, participantId: string) => {
-    if (!parsed) return;
-    setParsed({
-      ...parsed,
-      items: parsed.items.map((it) => {
-        if (it.id !== itemId) return it;
-        const has = it.assignedTo.includes(participantId);
-        return {
-          ...it,
-          assignedTo: has
-            ? it.assignedTo.filter((p) => p !== participantId)
-            : [...it.assignedTo, participantId],
-        };
-      }),
-    });
-  };
 
   const save = async () => {
     if (!parsed || parsed.items.length === 0 || participants.length === 0) return;
@@ -231,47 +207,10 @@ export function ReceiptScanScreen() {
             Articles ({parsed.items.length}) — total{" "}
             {formatMoneyCents(totalCents)}
           </Typography>
-          <Stack spacing={1}>
-            {parsed.items.map((it, i) => (
-              <ItemCard
-                key={it.id}
-                item={it}
-                participants={participants}
-                onLabelChange={(label) =>
-                  setParsed({
-                    ...parsed,
-                    items: parsed.items.map((x, j) =>
-                      j === i ? { ...x, label } : x,
-                    ),
-                  })
-                }
-                onPriceChange={(priceCents) =>
-                  setParsed({
-                    ...parsed,
-                    items: parsed.items.map((x, j) =>
-                      j === i ? { ...x, priceCents } : x,
-                    ),
-                  })
-                }
-                onToggle={(pid) => toggleAssignee(it.id, pid)}
-                onDelete={() =>
-                  setParsed({
-                    ...parsed,
-                    items: parsed.items.filter((_, j) => j !== i),
-                  })
-                }
-              />
-            ))}
-          </Stack>
-          <PerPersonSummary
-            items={parsed.items.map((it) => ({
-              id: it.id,
-              label: it.label,
-              priceCents: it.priceCents,
-              quantity: it.quantity,
-              assignedTo: it.assignedTo,
-            }))}
+          <ReceiptItemsEditor
+            items={parsed.items}
             participants={participants}
+            onChange={(items) => setParsed({ ...parsed, items })}
           />
           <Box>
             <Button
@@ -290,141 +229,8 @@ export function ReceiptScanScreen() {
 }
 
 /**
- * Editable card per receipt line: label + price text fields, filter
- * chips to toggle the assignee set, helper line that previews either
- * "X / personne" (item is assigned) or "réparti équitablement entre
- * tous" (fallback). Same UX as Android's ScanReceiptScreen.
+ * Editable card per receipt line: handled by `ReceiptItemsEditor`.
  */
-function ItemCard(props: {
-  item: ParsedItem;
-  participants: Participant[];
-  onLabelChange: (label: string) => void;
-  onPriceChange: (priceCents: number) => void;
-  onToggle: (participantId: string) => void;
-  onDelete: () => void;
-}) {
-  const { item } = props;
-  const [priceText, setPriceText] = useState(
-    (item.priceCents / 100).toFixed(2).replace(".", ","),
-  );
-
-  // Re-sync if the parent rewrites the price (e.g. on deletion of
-  // sibling items causing keys to shuffle). Cheap: just on item id.
-  useEffect(() => {
-    setPriceText((item.priceCents / 100).toFixed(2).replace(".", ","));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id]);
-
-  const perPerson =
-    item.assignedTo.length > 0 && item.priceCents > 0
-      ? Math.floor(item.priceCents / item.assignedTo.length)
-      : null;
-
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack spacing={1}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            {item.quantity > 1 && (
-              <Chip size="small" label={`${item.quantity}×`} />
-            )}
-            <TextField
-              size="small"
-              label="Article"
-              value={item.label}
-              onChange={(e) => props.onLabelChange(e.target.value)}
-              sx={{ flex: 1 }}
-            />
-            <TextField
-              size="small"
-              label="€"
-              value={priceText}
-              onChange={(e) => {
-                setPriceText(e.target.value);
-                const cents = parseAmountToCents(e.target.value);
-                if (cents != null) props.onPriceChange(cents);
-              }}
-              sx={{ width: 96 }}
-              inputProps={{ inputMode: "decimal" }}
-            />
-            <IconButton onClick={props.onDelete} aria-label="delete item">
-              <DeleteIcon />
-            </IconButton>
-          </Stack>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-            {props.participants.map((p) => {
-              const selected = item.assignedTo.includes(p.id);
-              return (
-                <Chip
-                  key={p.id}
-                  label={p.name}
-                  size="small"
-                  variant={selected ? "filled" : "outlined"}
-                  color={selected ? "primary" : "default"}
-                  onClick={() => props.onToggle(p.id)}
-                />
-              );
-            })}
-          </Box>
-          {perPerson != null && (
-            <Typography variant="caption" color="primary">
-              → {formatMoneyCents(perPerson)} / personne
-            </Typography>
-          )}
-          {item.assignedTo.length === 0 && (
-            <Typography variant="caption" color="text.secondary">
-              Non assigné → réparti équitablement entre tous
-            </Typography>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Bottom summary card showing the final per-person breakdown. */
-function PerPersonSummary(props: {
-  items: ExpenseItem[];
-  participants: Participant[];
-}) {
-  if (props.items.length === 0 || props.participants.length === 0) return null;
-  const shares = assignReceiptItems(
-    props.items,
-    props.participants.map((p) => p.id),
-  );
-  const byId = new Map(shares.map((s) => [s.participantId, s.amountCents]));
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="subtitle2" gutterBottom>
-          Détail par personne
-        </Typography>
-        <List dense disablePadding>
-          {props.participants.map((p) => (
-            <ListItem key={p.id} disablePadding sx={{ py: 0.25 }}>
-              <ListItemText
-                primary={p.name}
-                slotProps={{ primary: { variant: "body2" } }}
-              />
-              <Typography variant="body2">
-                {formatMoneyCents(byId.get(p.id) ?? 0)}
-              </Typography>
-            </ListItem>
-          ))}
-        </List>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Accepts "12,34" / "12.34" / "12" — returns integer cents or null. */
-function parseAmountToCents(raw: string): number | null {
-  const cleaned = raw.trim().replace(/\s/g, "").replace(",", ".");
-  if (cleaned.length === 0) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n * 100);
-}
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();

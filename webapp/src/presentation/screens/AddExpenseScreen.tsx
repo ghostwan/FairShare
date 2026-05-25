@@ -19,15 +19,26 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { fr } from "@/i18n/fr";
 import { getDb } from "@/data/db";
 import { listCategories, upsertExpense } from "@/data/repositories";
-import type { Category, Expense, ExpenseShare } from "@/core/domain/models";
-import { argbToCssHex } from "../format";
+import type {
+  Category,
+  Expense,
+  ExpenseItem,
+  ExpenseShare,
+} from "@/core/domain/models";
+import { assignReceiptItems } from "@/core/domain/receiptAssign";
+import { argbToCssHex, formatMoneyCents } from "../format";
+import { ReceiptItemsEditor } from "../components/ReceiptItemsEditor";
 
 /**
- * Add / edit expense. Default split is equal shares between every
- * participant, matching Android's behaviour; the form lets the user
- * uncheck participants individually. Custom (per-person amount) splits
- * aren't exposed in the v1 webapp because the receipt-item flow that
- * needs them lives on Android only for now.
+ * Add / edit expense. Two flavours behind a single screen:
+ *
+ *  - **Simple mode** (default): equal-split chips, free-form amount,
+ *    matches Android's `AddExpenseScreen`.
+ *  - **Receipt mode** (when editing an expense whose `items` aren't
+ *    empty — typically created via the scan flow): swaps the chips for
+ *    a `ReceiptItemsEditor`, derives the amount from the items sum,
+ *    and recomputes shares via `assignReceiptItems` on save. Mirrors
+ *    Android's `EditReceiptScreen` route in `EditExpenseRouter`.
  *
  * Cents conversion: we parse the user's decimal input with the FR
  * locale (`,` as separator) and round half-away-from-zero. Display is
@@ -67,6 +78,7 @@ export function AddExpenseScreen() {
   const [date, setDate] = useState<string>(toLocalDateInput(Date.now()));
   const [categoryId, setCategoryId] = useState<string>("");
   const [isSettlement, setIsSettlement] = useState(false);
+  const [items, setItems] = useState<ExpenseItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -83,6 +95,7 @@ export function AddExpenseScreen() {
       setDate(toLocalDateInput(existing.date));
       setCategoryId(existing.categoryId ?? "");
       setIsSettlement(existing.isSettlement);
+      setItems(existing.items ?? []);
       setHydrated(true);
     } else if (participants.length > 0) {
       setPayerId((prev) => prev || participants[0]!.id);
@@ -91,18 +104,27 @@ export function AddExpenseScreen() {
     }
   }, [hydrated, isEdit, existing, participants]);
 
-  const amountCents = useMemo(() => parseAmountCents(amountStr), [amountStr]);
+  const receiptMode = items.length > 0;
+  const itemsTotalCents = useMemo(
+    () => items.reduce((s, it) => s + it.priceCents, 0),
+    [items],
+  );
+  const amountCents = useMemo(
+    () => (receiptMode ? itemsTotalCents : parseAmountCents(amountStr)),
+    [receiptMode, itemsTotalCents, amountStr],
+  );
   const valid =
     title.trim().length > 0 &&
     amountCents != null &&
     amountCents > 0 &&
     payerId.length > 0 &&
-    participantsIncluded.size > 0;
+    (receiptMode || participantsIncluded.size > 0);
 
   const submit = async () => {
     if (!valid || amountCents == null) return;
-    const ids = [...participantsIncluded];
-    const shares = splitEquallyCents(amountCents, ids);
+    const shares = receiptMode
+      ? assignReceiptItems(items, participants.map((p) => p.id))
+      : splitEquallyCents(amountCents, [...participantsIncluded]);
     const exp: Expense = {
       id: existing?.id ?? "",
       eventId,
@@ -111,7 +133,7 @@ export function AddExpenseScreen() {
       payerId,
       date: new Date(date).getTime(),
       shares,
-      items: existing?.items ?? [],
+      items,
       isSettlement,
       categoryId: categoryId || null,
     };
@@ -147,10 +169,14 @@ export function AddExpenseScreen() {
       />
       <TextField
         label={fr.expenses.amount}
-        value={amountStr}
+        value={receiptMode ? formatMoneyCents(itemsTotalCents) : amountStr}
         onChange={(e) => setAmountStr(e.target.value)}
         inputMode="decimal"
         fullWidth
+        disabled={receiptMode}
+        helperText={
+          receiptMode ? "Calculé depuis les articles du ticket" : undefined
+        }
       />
       <FormControl fullWidth>
         <InputLabel>{fr.expenses.payer}</InputLabel>
@@ -191,30 +217,41 @@ export function AddExpenseScreen() {
       </FormControl>
 
       <Typography variant="subtitle2">{fr.expenses.split}</Typography>
-      <Typography variant="caption" color="text.secondary">
-        {fr.expenses.splitEqual}
-      </Typography>
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        {participants.map((p) => {
-          const on = participantsIncluded.has(p.id);
-          return (
-            <Chip
-              key={p.id}
-              label={p.name}
-              onClick={() => {
-                setParticipantsIncluded((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(p.id)) next.delete(p.id);
-                  else next.add(p.id);
-                  return next;
-                });
-              }}
-              color={on ? "primary" : "default"}
-              variant={on ? "filled" : "outlined"}
-            />
-          );
-        })}
-      </Box>
+      {receiptMode ? (
+        <ReceiptItemsEditor
+          items={items}
+          participants={participants}
+          onChange={setItems}
+          allowAdd
+        />
+      ) : (
+        <>
+          <Typography variant="caption" color="text.secondary">
+            {fr.expenses.splitEqual}
+          </Typography>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+            {participants.map((p) => {
+              const on = participantsIncluded.has(p.id);
+              return (
+                <Chip
+                  key={p.id}
+                  label={p.name}
+                  onClick={() => {
+                    setParticipantsIncluded((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(p.id)) next.delete(p.id);
+                      else next.add(p.id);
+                      return next;
+                    });
+                  }}
+                  color={on ? "primary" : "default"}
+                  variant={on ? "filled" : "outlined"}
+                />
+              );
+            })}
+          </Box>
+        </>
+      )}
 
       <FormControlLabel
         control={
