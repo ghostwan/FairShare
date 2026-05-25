@@ -19,6 +19,8 @@ import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
 import com.fairshare.domain.repository.SettingsRepository
 import com.fairshare.domain.usecase.ComputeBalancesUseCase
+import com.fairshare.domain.usecase.CategoryStat
+import com.fairshare.domain.usecase.ComputeCategoryStatsUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -48,6 +50,12 @@ data class EventDetailState(
      */
     val customCategories: List<Category> = emptyList(),
     /**
+     * Per-category aggregation of [expenses] (settlements excluded),
+     * pre-computed by [ComputeCategoryStatsUseCase] so the Stats tab
+     * stays a thin renderer.
+     */
+    val categoryStats: List<CategoryStat> = emptyList(),
+    /**
      * `true` after the first emission of the upstream `combine`. Lets
      * the screen tell "still loading" from "loaded with empty data" so
      * empty-state placeholders don't flash during the cold start.
@@ -63,6 +71,7 @@ class EventDetailViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val categoryRepository: CategoryRepository,
     private val computeBalances: ComputeBalancesUseCase,
+    private val computeCategoryStats: ComputeCategoryStatsUseCase,
     private val syncCoordinator: SyncCoordinator,
     private val settings: SettingsRepository,
     @ApplicationContext private val context: Context,
@@ -78,6 +87,7 @@ class EventDetailViewModel @Inject constructor(
     ) { event, participants, expenses, customCategories ->
         val balances = computeBalances.balances(participants, expenses)
         val settlements = computeBalances.settlements(balances)
+        val categoryStats = computeCategoryStats(expenses, customCategories)
         EventDetailState(
             event = event,
             participants = participants,
@@ -85,6 +95,7 @@ class EventDetailViewModel @Inject constructor(
             balances = balances,
             settlements = settlements,
             customCategories = customCategories,
+            categoryStats = categoryStats,
             loaded = true,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EventDetailState())

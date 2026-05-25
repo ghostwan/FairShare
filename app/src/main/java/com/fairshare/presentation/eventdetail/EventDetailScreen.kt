@@ -34,7 +34,12 @@ import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.toDayHeaderLabel
 import com.fairshare.presentation.common.toStartOfDay
 
-private enum class Tab(val label: String) { Expenses("Dépenses"), Balances("Soldes"), Participants("Personnes") }
+private enum class Tab(val label: String) {
+    Expenses("Dépenses"),
+    Balances("Soldes"),
+    Stats("Stats"),
+    Participants("Personnes"),
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,6 +128,8 @@ fun EventDetailScreen(
                         onDelete = vm::removeExpense,
                     ) else Box(Modifier.fillMaxSize())
                     Tab.Balances -> if (state.loaded) BalancesList(state, currency, onSettle = vm::recordSettlement)
+                        else Box(Modifier.fillMaxSize())
+                    Tab.Stats -> if (state.loaded) StatsList(state, currency)
                         else Box(Modifier.fillMaxSize())
                     Tab.Participants -> if (state.loaded) ParticipantsList(state, onRemove = vm::removeParticipant)
                         else Box(Modifier.fillMaxSize())
@@ -320,6 +327,91 @@ private fun BalancesList(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StatsList(state: EventDetailState, currency: String) {
+    val stats = state.categoryStats
+    if (stats.isEmpty()) {
+        EmptyHint("Aucune dépense à statistiquer.")
+        return
+    }
+    val grandTotal = stats.sumOf { it.totalCents }
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            // Header line with the grand total so the user gets the
+            // overall spend at a glance before diving into the bars.
+            ListItem(
+                headlineContent = {
+                    Text("Total", style = MaterialTheme.typography.titleMedium)
+                },
+                trailingContent = {
+                    Text(
+                        grandTotal.centsToString(currency),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+            )
+        }
+        items(stats, key = { it.category?.id ?: "uncategorized" }) { stat ->
+            CategoryStatRow(stat, currency)
+        }
+    }
+}
+
+/**
+ * One row of the Stats tab: emoji + name, count, total amount, and a
+ * horizontal bar whose width is proportional to the bucket's share of
+ * the grand total. Uncategorized expenses render with a neutral
+ * outline tint and a "Sans catégorie" label.
+ */
+@Composable
+private fun CategoryStatRow(
+    stat: com.fairshare.domain.usecase.CategoryStat,
+    currency: String,
+) {
+    val tint = stat.category?.let { Color(it.color) } ?: MaterialTheme.colorScheme.outline
+    val label = stat.category?.let { "${it.emoji} ${it.name}" } ?: "Sans catégorie"
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(
+                stat.totalCents.centsToString(currency),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Track at low alpha, fill at full color sized
+            // proportionally. fillMaxWidth(fraction) handles 0% / 100%
+            // edge cases naturally.
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(tint.copy(alpha = 0.15f)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(stat.fraction.toFloat().coerceIn(0f, 1f))
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(tint),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${(stat.fraction * 100).toInt()}% • ${stat.count}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
