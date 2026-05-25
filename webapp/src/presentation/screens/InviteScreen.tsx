@@ -37,13 +37,6 @@ export function InviteScreen() {
         const u = await buildInvitationForEvent(eventId);
         if (cancelled) return;
         setUrl(u);
-        if (canvasRef.current) {
-          await QRCode.toCanvas(canvasRef.current, u, {
-            margin: 1,
-            scale: 6,
-            errorCorrectionLevel: "M",
-          });
-        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -52,6 +45,26 @@ export function InviteScreen() {
       cancelled = true;
     };
   }, [eventId]);
+
+  // Separate draw effect: the canvas only mounts once `url` is set
+  // (we hide it via opacity to keep the ref stable), but even with an
+  // always-mounted canvas we want the draw to retry whenever the URL
+  // changes (e.g. user re-opens the screen after adding an expense
+  // and the seed grows).
+  useEffect(() => {
+    if (!url || !canvasRef.current) return;
+    let cancelled = false;
+    void QRCode.toCanvas(canvasRef.current, url, {
+      margin: 1,
+      scale: 6,
+      errorCorrectionLevel: "M",
+    }).catch((e) => {
+      if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
 
   const copy = async () => {
     if (!url) return;
