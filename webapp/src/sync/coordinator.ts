@@ -11,6 +11,7 @@ import {
   WorkerCloudTransport,
   WorkerTransportError,
 } from "@/core/sync/transport";
+import { encodeInvitation } from "@/core/invitation/codec";
 import type {
   Category,
   Event,
@@ -414,3 +415,26 @@ function categorySnapshotToModel(s: CategorySnapshot): Category {
 // Unused helpers re-exported so the few callers that need to massage
 // raw key bytes (e.g. the QR generator) don't have to rebuild them.
 export { base64UrlDecode };
+
+/**
+ * Build an invitation URL for an event from local state. The seed is
+ * the full op log scoped to the event so the joiner can replay history
+ * without round-tripping through the Worker first — the
+ * `bootstrapFromInvitation` path on the receiving device still issues
+ * a catch-up pull for anything emitted after the QR was rendered.
+ */
+export async function buildInvitationForEvent(
+  eventId: string,
+): Promise<string> {
+  const secret = await getEventSecret(eventId);
+  const rows = await getDb()
+    .opLog.where("eventId")
+    .equals(eventId)
+    .toArray();
+  const ops = rows
+    .sort((a, b) =>
+      a.lamport - b.lamport || a.opId.localeCompare(b.opId),
+    )
+    .map(rowToOp);
+  return encodeInvitation(eventId, ops, secret.key, "https");
+}
