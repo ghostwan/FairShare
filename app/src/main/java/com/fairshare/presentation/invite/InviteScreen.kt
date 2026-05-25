@@ -92,6 +92,7 @@ fun InviteScreen(
                 state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.url != null -> Content(
                     url = state.url!!,
+                    syncWarning = state.syncWarning,
                     onCopy = { copyToClipboard(context, state.url!!) },
                     onShare = { shareText(context, state.url!!) },
                 )
@@ -107,6 +108,7 @@ fun InviteScreen(
 @Composable
 private fun Content(
     url: String,
+    syncWarning: Boolean,
     onCopy: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -123,6 +125,16 @@ private fun Content(
                 "récupère l'historique depuis le serveur de sync.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        if (syncWarning) {
+            Text(
+                "⚠️ Impossible de pousser tes données vers le serveur. " +
+                    "Le QR est utilisable mais l'autre device verra un " +
+                    "évènement vide tant que tu n'auras pas re-synchronisé " +
+                    "(pull-to-refresh ou Paramètres → Synchroniser).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         QrCodeBlock(content = url)
         OutlinedTextField(
             value = url,

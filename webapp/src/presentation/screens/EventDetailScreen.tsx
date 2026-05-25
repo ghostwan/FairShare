@@ -79,7 +79,27 @@ export function EventDetailScreen() {
     [] as Category[],
   );
 
-  if (event == null) return null;
+  if (event == null) {
+    return (
+      <Stack spacing={2} alignItems="center" sx={{ pt: 4 }}>
+        <Typography variant="body1" align="center">
+          Aucune donnée pour cet évènement.
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          align="center"
+          sx={{ maxWidth: 360 }}
+        >
+          L'autre device n'a peut-être pas encore poussé l'historique
+          vers le serveur de sync. Utilise le bouton de rafraîchissement
+          en haut à droite, ou demande à la personne qui t'a invité
+          d'ouvrir l'app puis "Synchroniser maintenant" dans les
+          paramètres.
+        </Typography>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={2} sx={{ flex: 1 }}>

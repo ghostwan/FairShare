@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fairshare.data.invitation.ExportException
 import com.fairshare.data.invitation.InvitationExporter
+import com.fairshare.data.sync.SyncCoordinator
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,13 @@ import javax.inject.Inject
 data class InviteState(
     val loading: Boolean = true,
     val url: String? = null,
+    /**
+     * True when the pre-share sync did not reach the Worker. The QR is
+     * still rendered (the user may want it for later), but the joining
+     * device will see nothing until this device pushes its local ops
+     * — usually on the next foreground or "Synchroniser maintenant".
+     */
+    val syncWarning: Boolean = false,
     val error: String? = null,
 )
 
@@ -31,6 +39,7 @@ data class InviteState(
 class InviteViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val exporter: InvitationExporter,
+    private val coordinator: SyncCoordinator,
 ) : ViewModel() {
 
     val eventId: String = checkNotNull(savedStateHandle[Route.ARG_EVENT_ID])
@@ -45,11 +54,27 @@ class InviteViewModel @Inject constructor(
     fun regenerate() {
         _state.value = InviteState(loading = true)
         viewModelScope.launch {
+            // CRITICAL: push the local op log to the Worker before
+            // rendering the QR. Otherwise a joining device decodes the
+            // URL, derives the bearer, hits the Worker — and gets
+            // nothing back because we haven't pushed yet. The user
+            // would see an empty event on the other side.
+            //
+            // syncEvent does push-then-pull; on a freshly created
+            // event the push registers the bearer and uploads
+            // EventUpsert + ParticipantUpserts in one round-trip. We
+            // surface a non-blocking warning on failure (no network,
+            // worker URL misconfigured) so the user knows the QR is
+            // not immediately usable.
+            val syncResult = coordinator.syncEvent(eventId)
+            val syncFailed = syncResult.isFailure
+
             exporter.export(eventId)
                 .onSuccess { export ->
                     _state.value = InviteState(
                         loading = false,
                         url = export.url,
+                        syncWarning = syncFailed,
                     )
                 }
                 .onFailure { t ->
