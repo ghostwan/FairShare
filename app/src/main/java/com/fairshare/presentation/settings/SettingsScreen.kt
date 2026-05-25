@@ -51,6 +51,7 @@ fun SettingsScreen(
     val expand by vm.expandQuantities.collectAsState()
     val apiKey by vm.geminiApiKey.collectAsState()
     val model by vm.geminiModel.collectAsState()
+    val alwaysGemini by vm.alwaysUseGemini.collectAsState()
     val cloudUrl by vm.cloudBaseUrl.collectAsState()
     val syncStatus by vm.syncStatus.collectAsState()
     var showKey by remember { mutableStateOf(false) }
@@ -131,6 +132,24 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            ListItem(
+                headlineContent = { Text("Toujours scanner avec l'IA") },
+                supportingContent = {
+                    Text(
+                        if (alwaysGemini)
+                            "Tous les scans passent directement par Gemini. Plus précis, mais consomme ton quota API à chaque ticket."
+                        else
+                            "OCR local (gratuit, hors-ligne) d'abord. Tape « Réessayer avec IA » si le résultat est mauvais.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = alwaysGemini,
+                        onCheckedChange = vm::setAlwaysUseGemini,
+                        enabled = apiKey.isNotBlank(),
+                    )
+                },
             )
             Row(
                 modifier = Modifier

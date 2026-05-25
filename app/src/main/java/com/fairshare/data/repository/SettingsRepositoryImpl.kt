@@ -23,6 +23,7 @@ class SettingsRepositoryImpl @Inject constructor(
     private val expandKey = booleanPreferencesKey("expand_quantities")
     private val geminiApiKeyKey = stringPreferencesKey("gemini_api_key")
     private val geminiModelKey = stringPreferencesKey("gemini_model")
+    private val alwaysUseGeminiKey = booleanPreferencesKey("always_use_gemini")
     private val cloudBaseUrlKey = stringPreferencesKey("cloud_base_url")
 
     override val expandQuantities: Flow<Boolean> =
@@ -44,6 +45,13 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setGeminiModel(value: String) {
         context.settingsDataStore.edit { it[geminiModelKey] = value }
+    }
+
+    override val alwaysUseGemini: Flow<Boolean> =
+        context.settingsDataStore.data.map { it[alwaysUseGeminiKey] ?: false }
+
+    override suspend fun setAlwaysUseGemini(value: Boolean) {
+        context.settingsDataStore.edit { it[alwaysUseGeminiKey] = value }
     }
 
     override val cloudBaseUrl: Flow<String> =

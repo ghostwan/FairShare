@@ -45,6 +45,10 @@ class SettingsViewModel @Inject constructor(
         settings.geminiModel
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "gemini-2.5-flash")
 
+    val alwaysUseGemini: StateFlow<Boolean> =
+        settings.alwaysUseGemini
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     val cloudBaseUrl: StateFlow<String> =
         settings.cloudBaseUrl
             .stateIn(
@@ -69,6 +73,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setGeminiModel(value: String) {
         viewModelScope.launch { settings.setGeminiModel(value) }
+    }
+
+    fun setAlwaysUseGemini(value: Boolean) {
+        viewModelScope.launch { settings.setAlwaysUseGemini(value) }
     }
 
     fun setCloudBaseUrl(value: String) {
