@@ -2,8 +2,10 @@
  * FairShare sync Worker — zero-knowledge transport for CRDT ops.
  *
  * Endpoints (per DESIGN.md §6.2):
- *   POST /events/:eventId/ops           push a batch of {opId, lamport, deviceId, nonce, ciphertext}
- *   GET  /events/:eventId/ops?since=N   pull ops with lamport > N, ordered by (lamport, op_id)
+ *   POST   /events/:eventId/ops                           push a batch of ops
+ *   GET    /events/:eventId/ops?since=N                   pull ops with lamport > N
+ *   PUT    /events/:eventId/devices/:deviceId/token       register a FCM token
+ *   DELETE /events/:eventId/devices/:deviceId/token       remove a FCM token
  *
  * Auth (per DESIGN.md §7): Authorization: Bearer <hex(HMAC-SHA256(eventKey, eventId))>.
  * The Worker never sees `eventKey` itself; clients prove possession by sending the static
@@ -13,12 +15,25 @@
  *
  * Storage is intentionally opaque: `nonce` and `ciphertext` are stored as BLOBs and
  * are never decoded server-side. Losing the D1 database leaks zero plaintext.
+ *
+ * FCM fan-out: after a successful POST /ops, the Worker pushes a data-only
+ * notification to every device registered for that event except the senders in
+ * the batch, so paired devices can pull immediately instead of polling.
  */
+
+import { fcmFanOut, parseServiceAccount, type ServiceAccount } from "./fcm";
 
 export interface Env {
     DB: D1Database;
     PULL_PAGE_SIZE: string;
     MAX_PUSH_BYTES: string;
+    /**
+     * Optional. JSON content of a Firebase service account private key
+     * (`wrangler secret put FCM_SERVICE_ACCOUNT`). When absent, FCM
+     * fan-out is silently skipped and clients fall back to manual /
+     * resume-based syncs.
+     */
+    FCM_SERVICE_ACCOUNT?: string;
 }
 
 interface PushOp {
@@ -50,11 +65,15 @@ interface PullResponse {
 
 const MAX_LAMPORT = Number.MAX_SAFE_INTEGER;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Conservative bound on FCM registration tokens; real tokens are ~163 chars. */
+const MAX_FCM_TOKEN_LEN = 4096;
+/** Bound on the deviceId path segment; mirrors the body validator in handlePush. */
+const MAX_DEVICE_ID_LEN = 128;
 
 export default {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         try {
-            return await route(request, env);
+            return await route(request, env, ctx);
         } catch (err) {
             // Last-resort guard so a code bug never leaks a stack trace to clients.
             console.error("Unhandled error", err);
@@ -63,27 +82,52 @@ export default {
     },
 };
 
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/" || url.pathname === "/health") {
         return new Response("fairshare-sync ok\n", { headers: { "content-type": "text/plain" } });
     }
 
-    const match = url.pathname.match(/^\/events\/([^/]+)\/ops\/?$/);
-    if (!match) return jsonError(404, "not_found");
+    const opsMatch = url.pathname.match(/^\/events\/([^/]+)\/ops\/?$/);
+    if (opsMatch) {
+        const eventId = decodeURIComponent(opsMatch[1]);
+        if (!UUID_RE.test(eventId)) return jsonError(400, "bad_event_id");
 
-    const eventId = decodeURIComponent(match[1]);
-    if (!UUID_RE.test(eventId)) return jsonError(400, "bad_event_id");
+        const bearer = readBearer(request);
+        if (bearer == null) return jsonError(401, "missing_bearer");
+        const auth = await checkBearer(eventId, bearer, request.method, env);
+        if (!auth.ok) return jsonError(401, auth.code);
 
-    const bearer = readBearer(request);
-    if (bearer == null) return jsonError(401, "missing_bearer");
-    const auth = await checkBearer(eventId, bearer, request.method, env);
-    if (!auth.ok) return jsonError(401, auth.code);
+        if (request.method === "POST") return handlePush(eventId, bearer, request, env, ctx);
+        if (request.method === "GET") return handlePull(eventId, url, env);
+        return jsonError(405, "method_not_allowed");
+    }
 
-    if (request.method === "POST") return handlePush(eventId, bearer, request, env);
-    if (request.method === "GET") return handlePull(eventId, url, env);
-    return jsonError(405, "method_not_allowed");
+    const tokenMatch = url.pathname.match(/^\/events\/([^/]+)\/devices\/([^/]+)\/token\/?$/);
+    if (tokenMatch) {
+        const eventId = decodeURIComponent(tokenMatch[1]);
+        const deviceId = decodeURIComponent(tokenMatch[2]);
+        if (!UUID_RE.test(eventId)) return jsonError(400, "bad_event_id");
+        if (deviceId.length === 0 || deviceId.length > MAX_DEVICE_ID_LEN) {
+            return jsonError(400, "bad_device_id");
+        }
+
+        const bearer = readBearer(request);
+        if (bearer == null) return jsonError(401, "missing_bearer");
+        // PUT registers a token; the event row may not exist yet on the
+        // server side if the device hasn't pushed any op (eg. a fresh
+        // joiner that wants to be reachable before its first write).
+        // Allow the bearer to bootstrap the verifier just like POST /ops.
+        const auth = await checkBearer(eventId, bearer, request.method === "PUT" ? "POST" : request.method, env);
+        if (!auth.ok) return jsonError(401, auth.code);
+
+        if (request.method === "PUT") return handleRegisterToken(eventId, deviceId, bearer, request, env);
+        if (request.method === "DELETE") return handleUnregisterToken(eventId, deviceId, env);
+        return jsonError(405, "method_not_allowed");
+    }
+
+    return jsonError(404, "not_found");
 }
 
 // ---------- Auth ----------
@@ -146,6 +190,7 @@ async function handlePush(
     bearer: string,
     request: Request,
     env: Env,
+    ctx: ExecutionContext,
 ): Promise<Response> {
     const maxBytes = parseInt(env.MAX_PUSH_BYTES, 10);
     const raw = await request.text();
@@ -203,7 +248,120 @@ async function handlePush(
     const results = await env.DB.batch(stmts);
     const inserted = results.reduce((acc, r) => acc + (r.meta.changes ?? 0), 0);
 
+    // Fan-out FCM notifications to every paired device of this event
+    // except the senders in the current batch (a device shouldn't be
+    // woken up to pull its own write). Fire-and-forget via waitUntil
+    // so push latency stays dominated by the DB write, not by the
+    // FCM round-trip. If FCM is not configured we simply skip.
+    if (inserted > 0 && env.FCM_SERVICE_ACCOUNT) {
+        const senderIds = new Set(body.ops.map(op => op.deviceId));
+        ctx.waitUntil(notifyPairedDevices(eventId, senderIds, env));
+    }
+
     return Response.json({ inserted });
+}
+
+/**
+ * Pulls every FCM token registered for `eventId` except the
+ * `senderDeviceIds` set, posts a data-only push to each, and prunes
+ * tokens that came back as UNREGISTERED / NOT_FOUND so they don't
+ * waste fan-out cycles on the next push.
+ */
+async function notifyPairedDevices(
+    eventId: string,
+    senderDeviceIds: Set<string>,
+    env: Env,
+): Promise<void> {
+    let sa: ServiceAccount;
+    try {
+        sa = parseServiceAccount(env.FCM_SERVICE_ACCOUNT!);
+    } catch (err) {
+        console.error("fcm_parse_service_account", err);
+        return;
+    }
+
+    const rows = await env.DB
+        .prepare("SELECT device_id, fcm_token FROM device_tokens WHERE event_id = ?1")
+        .bind(eventId)
+        .all<{ device_id: string; fcm_token: string }>();
+    const targets = (rows.results ?? []).filter(r => !senderDeviceIds.has(r.device_id));
+    if (targets.length === 0) return;
+
+    let result;
+    try {
+        result = await fcmFanOut(sa, targets.map(t => t.fcm_token), { eventId });
+    } catch (err) {
+        console.error("fcm_fan_out_failed", err);
+        return;
+    }
+    console.log(
+        `fcm_fan_out event=${eventId} sent=${result.sent} failed=${result.failed} ` +
+        `stale=${result.staleTokens.length}`,
+    );
+
+    if (result.staleTokens.length > 0) {
+        const stmts = result.staleTokens.map(token =>
+            env.DB
+                .prepare("DELETE FROM device_tokens WHERE event_id = ?1 AND fcm_token = ?2")
+                .bind(eventId, token),
+        );
+        await env.DB.batch(stmts);
+    }
+}
+
+// ---------- PUT|DELETE /events/:id/devices/:deviceId/token ----------
+
+interface RegisterTokenBody {
+    fcmToken: string;
+}
+
+async function handleRegisterToken(
+    eventId: string,
+    deviceId: string,
+    bearer: string,
+    request: Request,
+    env: Env,
+): Promise<Response> {
+    let body: RegisterTokenBody;
+    try {
+        body = await request.json() as RegisterTokenBody;
+    } catch {
+        return jsonError(400, "bad_json");
+    }
+    if (!body || typeof body.fcmToken !== "string") return jsonError(400, "bad_shape");
+    const token = body.fcmToken.trim();
+    if (token.length === 0 || token.length > MAX_FCM_TOKEN_LEN) {
+        return jsonError(400, "bad_token");
+    }
+
+    // Same bootstrap as POST /ops: an event that only exists because
+    // a device wants to register a push token must still get its
+    // bearer verifier persisted so subsequent GETs work.
+    await registerBearerIfNeeded(eventId, bearer, env);
+
+    await env.DB
+        .prepare(
+            "INSERT INTO device_tokens (event_id, device_id, fcm_token, updated_at) " +
+            "VALUES (?1, ?2, ?3, ?4) " +
+            "ON CONFLICT(event_id, device_id) DO UPDATE SET " +
+            "fcm_token = excluded.fcm_token, updated_at = excluded.updated_at",
+        )
+        .bind(eventId, deviceId, token, Date.now())
+        .run();
+
+    return Response.json({ ok: true });
+}
+
+async function handleUnregisterToken(
+    eventId: string,
+    deviceId: string,
+    env: Env,
+): Promise<Response> {
+    const result = await env.DB
+        .prepare("DELETE FROM device_tokens WHERE event_id = ?1 AND device_id = ?2")
+        .bind(eventId, deviceId)
+        .run();
+    return Response.json({ removed: result.meta.changes ?? 0 });
 }
 
 // ---------- GET /events/:id/ops?since=N[&since_op=UUID] ----------
