@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -52,6 +53,7 @@ fun EventDetailScreen(
     onEditExpense: (eventId: String, expenseId: String) -> Unit,
     onScanReceipt: (String) -> Unit,
     onInvite: (String) -> Unit,
+    onOpenEventSettings: (String) -> Unit,
     vm: EventDetailViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
@@ -83,6 +85,12 @@ fun EventDetailScreen(
                     }
                     IconButton(onClick = { onInvite(vm.eventId) }) {
                         Icon(Icons.Default.GroupAdd, contentDescription = "Inviter")
+                    }
+                    IconButton(
+                        onClick = { onOpenEventSettings(vm.eventId) },
+                        enabled = state.event != null,
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Réglages de l'événement")
                     }
                 },
             )

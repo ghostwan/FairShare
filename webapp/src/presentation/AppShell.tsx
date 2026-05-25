@@ -33,6 +33,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onEvent = location.pathname.startsWith("/event/");
   const eventId = onEvent ? location.pathname.split("/")[2]! : null;
   const isRoot = location.pathname === "/" || location.pathname === "";
+  const onEventSettings =
+    eventId != null && location.pathname.endsWith("/settings");
 
   // Visibility-driven catch-up: every time the user comes back to the
   // tab (or the PWA), pull from the Worker so the event view stays
@@ -88,6 +90,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ) : (
                 <RefreshIcon />
               )}
+            </IconButton>
+          )}
+          {eventId && !onEventSettings && (
+            <IconButton
+              color="inherit"
+              aria-label="event settings"
+              onClick={() => navigate(`/event/${eventId}/settings`)}
+            >
+              <SettingsIcon />
             </IconButton>
           )}
           {isRoot && (

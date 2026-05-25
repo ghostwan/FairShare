@@ -59,6 +59,54 @@ export async function updateEvent(event: Event): Promise<void> {
   });
 }
 
+/**
+ * Toggle the archive flag and propagate it through the op log (LWW),
+ * so other paired devices see the same archived state once they pull.
+ * No-op if the requested state already matches.
+ */
+export async function setEventArchived(
+  eventId: string,
+  archived: boolean,
+): Promise<void> {
+  const current = await getDb().events.get(eventId);
+  if (!current) return;
+  if (current.archived === archived) return;
+  await updateEvent({ ...current, archived });
+}
+
+/**
+ * Local-only delete: wipes the materialised rows + op log + cursor +
+ * secret on this device, without emitting an EventDelete op. Same
+ * rationale as the Android `EventRepositoryImpl.delete`: emitting a
+ * tombstone would mean re-importing the event from a peer would
+ * silently lose to the local delete via LWW. A peer can still re-share
+ * the event afterwards and the bootstrap pulls everything back.
+ */
+export async function deleteEventLocally(eventId: string): Promise<void> {
+  const db = getDb();
+  await db.transaction(
+    "rw",
+    [
+      db.events,
+      db.participants,
+      db.expenses,
+      db.categories,
+      db.opLog,
+      db.opCursor,
+      db.eventSecrets,
+    ],
+    async () => {
+      await db.participants.where("eventId").equals(eventId).delete();
+      await db.expenses.where("eventId").equals(eventId).delete();
+      await db.categories.where("eventId").equals(eventId).delete();
+      await db.opLog.where("eventId").equals(eventId).delete();
+      await db.opCursor.where("eventId").equals(eventId).delete();
+      await db.eventSecrets.where("eventId").equals(eventId).delete();
+      await db.events.delete(eventId);
+    },
+  );
+}
+
 export async function listEvents(): Promise<Event[]> {
   return getDb().events.orderBy("createdAt").reverse().toArray();
 }

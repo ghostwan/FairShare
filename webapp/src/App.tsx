@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./presentation/AppShell";
 import { EventsListScreen } from "./presentation/screens/EventsListScreen";
 import { EventDetailScreen } from "./presentation/screens/EventDetailScreen";
+import { EventSettingsScreen } from "./presentation/screens/EventSettingsScreen";
 import { AddExpenseScreen } from "./presentation/screens/AddExpenseScreen";
 import { InviteScreen } from "./presentation/screens/InviteScreen";
 import { JoinScreen } from "./presentation/screens/JoinScreen";
@@ -35,6 +36,10 @@ export function App() {
           element={<AddExpenseScreen />}
         />
         <Route path="/event/:eventId/invite" element={<InviteScreen />} />
+        <Route
+          path="/event/:eventId/settings"
+          element={<EventSettingsScreen />}
+        />
         <Route
           path="/event/:eventId/receipt"
           element={<ReceiptScanScreen />}

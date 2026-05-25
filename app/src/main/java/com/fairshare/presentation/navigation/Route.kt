@@ -29,6 +29,14 @@ sealed class Route(val path: String) {
     /** Camera-based QR scanner used to bootstrap a join from another device. */
     data object ScanInvitation : Route("scan-invitation")
 
+    /** Camera-based QR scanner used to import a Gemini API key from another device. */
+    data object ScanGeminiKey : Route("scan-gemini-key")
+
+    /** Per-event settings (categories, future per-event preferences). */
+    data object EventSettings : Route("event/{eventId}/settings") {
+        fun build(eventId: String) = "event/$eventId/settings"
+    }
+
     /** Listing of events that have been archived (LWW `archived` flag). */
     data object Archived : Route("archived")
 

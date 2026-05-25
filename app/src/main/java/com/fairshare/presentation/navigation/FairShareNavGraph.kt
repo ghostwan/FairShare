@@ -16,7 +16,9 @@ import com.fairshare.presentation.invite.InviteScreen
 import com.fairshare.presentation.join.JoinEventScreen
 import com.fairshare.presentation.receipt.ScanReceiptScreen
 import com.fairshare.presentation.scan.ScanInvitationScreen
+import com.fairshare.presentation.settings.ScanGeminiKeyScreen
 import com.fairshare.presentation.settings.SettingsScreen
+import com.fairshare.presentation.eventsettings.EventSettingsScreen
 import java.util.Base64
 
 @Composable
@@ -53,7 +55,13 @@ fun FairShareNavGraph(
             ArchivedEventsScreen(onBack = { nav.popBackStack() })
         }
         composable(Route.Settings.path) {
-            SettingsScreen(onBack = { nav.popBackStack() })
+            SettingsScreen(
+                onBack = { nav.popBackStack() },
+                onScanGeminiKey = { nav.navigate(Route.ScanGeminiKey.path) },
+            )
+        }
+        composable(Route.ScanGeminiKey.path) {
+            ScanGeminiKeyScreen(onDone = { nav.popBackStack() })
         }
         composable(
             Route.EventDetail.path,
@@ -67,7 +75,14 @@ fun FairShareNavGraph(
                 },
                 onScanReceipt = { id -> nav.navigate(Route.ScanReceipt.build(id)) },
                 onInvite = { id -> nav.navigate(Route.Invite.build(id)) },
+                onOpenEventSettings = { id -> nav.navigate(Route.EventSettings.build(id)) },
             )
+        }
+        composable(
+            Route.EventSettings.path,
+            arguments = listOf(navArgument(Route.ARG_EVENT_ID) { type = NavType.StringType }),
+        ) {
+            EventSettingsScreen(onBack = { nav.popBackStack() })
         }
         composable(
             Route.AddExpense.path,

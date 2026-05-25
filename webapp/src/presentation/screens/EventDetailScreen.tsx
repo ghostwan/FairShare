@@ -26,17 +26,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getDb } from "@/data/db";
 import {
   addParticipant,
-  deleteCustomCategory,
   deleteExpense,
   deleteParticipant,
   listCategories,
   renameParticipant,
-  upsertCustomCategory,
 } from "@/data/repositories";
 import {
   computeBalances,
   computeSettlements,
   totalSpent,
+  totalsPaidBy,
 } from "@/core/domain/balances";
 import { fr } from "@/i18n/fr";
 import {
@@ -49,11 +48,10 @@ import { DEFAULT_CATEGORIES } from "@/core/domain/defaultCategories";
 import type { Category } from "@/core/domain/models";
 import { TextPromptDialog } from "../components/TextPromptDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { CategoryEditorDialog } from "../components/CategoryEditorDialog";
 import { syncNow } from "@/sync/coordinator";
 import { Alert } from "@mui/material";
 
-type TabKey = "expenses" | "balances" | "participants" | "categories";
+type TabKey = "expenses" | "balances" | "participants";
 
 export function EventDetailScreen() {
   const { eventId = "" } = useParams<{ eventId: string }>();
@@ -103,7 +101,6 @@ export function EventDetailScreen() {
         <Tab value="expenses" label={fr.tabs.expenses} />
         <Tab value="balances" label={fr.tabs.balances} />
         <Tab value="participants" label={fr.tabs.participants} />
-        <Tab value="categories" label={fr.tabs.categories} />
       </Tabs>
 
       {tab === "expenses" && (
@@ -123,10 +120,12 @@ export function EventDetailScreen() {
         />
       )}
       {tab === "participants" && (
-        <ParticipantsTab eventId={eventId} participants={participants} />
-      )}
-      {tab === "categories" && (
-        <CategoriesTab eventId={eventId} categories={categories} />
+        <ParticipantsTab
+          eventId={eventId}
+          currency={event.currency}
+          participants={participants}
+          expenses={expenses}
+        />
       )}
     </Stack>
   );
@@ -410,13 +409,17 @@ function BalancesTab(props: {
 
 function ParticipantsTab(props: {
   eventId: string;
+  currency: string;
   participants: import("@/core/domain/models").Participant[];
+  expenses: import("@/core/domain/models").Expense[];
 }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] =
     useState<import("@/core/domain/models").Participant | null>(null);
   const [removing, setRemoving] =
     useState<import("@/core/domain/models").Participant | null>(null);
+
+  const totals = totalsPaidBy(props.expenses);
 
   return (
     <Stack spacing={1}>
@@ -431,19 +434,25 @@ function ParticipantsTab(props: {
         <Typography color="text.secondary">{fr.participants.empty}</Typography>
       )}
       <List dense>
-        {props.participants.map((p) => (
-          <ListItem key={p.id}>
-            <ListItemText primary={p.name} />
-            <ListItemSecondaryAction>
-              <IconButton onClick={() => setRenaming(p)}>
-                <EditIcon />
-              </IconButton>
-              <IconButton onClick={() => setRemoving(p)}>
-                <DeleteIcon />
-              </IconButton>
-            </ListItemSecondaryAction>
-          </ListItem>
-        ))}
+        {props.participants.map((p) => {
+          const paid = totals.get(p.id) ?? 0;
+          return (
+            <ListItem key={p.id}>
+              <ListItemText
+                primary={p.name}
+                secondary={`${fr.participants.totalPaid}: ${formatMoneyCents(paid, props.currency)}`}
+              />
+              <ListItemSecondaryAction>
+                <IconButton onClick={() => setRenaming(p)}>
+                  <EditIcon />
+                </IconButton>
+                <IconButton onClick={() => setRemoving(p)}>
+                  <DeleteIcon />
+                </IconButton>
+              </ListItemSecondaryAction>
+            </ListItem>
+          );
+        })}
       </List>
 
       <TextPromptDialog
@@ -483,83 +492,3 @@ function ParticipantsTab(props: {
   );
 }
 
-function CategoriesTab(props: {
-  eventId: string;
-  categories: Category[];
-}) {
-  const [editing, setEditing] = useState<Category | null | "new">(null);
-  const [removing, setRemoving] = useState<Category | null>(null);
-
-  const custom = props.categories.filter((c) => !c.isDefault);
-
-  return (
-    <Stack spacing={1}>
-      <Button
-        variant="contained"
-        startIcon={<AddIcon />}
-        onClick={() => setEditing("new")}
-      >
-        {fr.categories.add}
-      </Button>
-      <Typography variant="overline" color="text.secondary">
-        Par défaut
-      </Typography>
-      <List dense>
-        {DEFAULT_CATEGORIES.map((c) => (
-          <ListItem key={c.id}>
-            <ListItemText
-              primary={`${c.emoji} ${c.name}`}
-              secondary={fr.categories.defaultBadge}
-            />
-          </ListItem>
-        ))}
-      </List>
-      <Typography variant="overline" color="text.secondary">
-        Personnalisées
-      </Typography>
-      {custom.length === 0 && (
-        <Typography color="text.secondary">{fr.categories.empty}</Typography>
-      )}
-      <List dense>
-        {custom.map((c) => (
-          <ListItem key={c.id}>
-            <ListItemText primary={`${c.emoji} ${c.name}`} />
-            <ListItemSecondaryAction>
-              <IconButton onClick={() => setEditing(c)}>
-                <EditIcon />
-              </IconButton>
-              <IconButton onClick={() => setRemoving(c)}>
-                <DeleteIcon />
-              </IconButton>
-            </ListItemSecondaryAction>
-          </ListItem>
-        ))}
-      </List>
-
-      <CategoryEditorDialog
-        open={editing != null}
-        initial={editing === "new" ? null : editing}
-        onCancel={() => setEditing(null)}
-        onConfirm={async (data) => {
-          await upsertCustomCategory(props.eventId, {
-            id: editing === "new" ? undefined : editing?.id,
-            name: data.name,
-            emoji: data.emoji,
-            color: data.color,
-          });
-          setEditing(null);
-        }}
-      />
-      <ConfirmDialog
-        open={!!removing}
-        title={fr.categories.delete}
-        confirmLabel={fr.categories.delete}
-        onCancel={() => setRemoving(null)}
-        onConfirm={async () => {
-          if (removing) await deleteCustomCategory(removing);
-          setRemoving(null);
-        }}
-      />
-    </Stack>
-  );
-}

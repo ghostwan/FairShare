@@ -37,7 +37,10 @@ export const fr = {
     expenses: "Dépenses",
     balances: "Balances",
     participants: "Participants",
-    categories: "Catégories",
+  },
+  eventSettings: {
+    title: "Réglages de l'événement",
+    categoriesSection: "Catégories",
   },
   expenses: {
     empty: "Aucune dépense.",
@@ -72,6 +75,7 @@ export const fr = {
     rename: "Renommer",
     remove: "Retirer",
     removeConfirm: "Retirer ce participant ?",
+    totalPaid: "Total payé",
   },
   categories: {
     empty: "Aucune catégorie personnalisée.",
@@ -103,6 +107,14 @@ export const fr = {
       "Sur iPhone/iPad, ouvrez le menu Partager dans Safari puis « Sur l'écran d'accueil ».",
     save: "Enregistrer",
     saved: "Réglages enregistrés",
+    shareGeminiKey: "Partager via QR",
+    scanGeminiKey: "Scanner un QR",
+    geminiQrTitle: "Partager la clé Gemini",
+    geminiQrHint:
+      "Scannez ce QR depuis l'app FairShare sur un autre appareil pour y copier votre clé Gemini. Ne le partagez qu'avec vos appareils.",
+    geminiKeyImported: "Clé Gemini importée",
+    geminiKeyImportFailed: "QR invalide",
+    geminiKeyMissing: "Renseignez une clé Gemini avant de la partager.",
     about: "À propos",
     version: "Version",
   },

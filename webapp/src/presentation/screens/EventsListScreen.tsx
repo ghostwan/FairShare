@@ -9,22 +9,33 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
+  Menu,
+  MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/data/db";
-import { createEvent } from "@/data/repositories";
+import {
+  createEvent,
+  deleteEventLocally,
+  setEventArchived,
+} from "@/data/repositories";
 import { fr } from "@/i18n/fr";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { Event } from "@/core/domain/models";
 
 export function EventsListScreen() {
   const navigate = useNavigate();
-  const events = useLiveQuery(
+  const allEvents = useLiveQuery(
     () => getDb().events.orderBy("createdAt").reverse().toArray(),
     [],
     [],
@@ -32,9 +43,13 @@ export function EventsListScreen() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [menuFor, setMenuFor] = useState<{
+    event: Event;
+    anchor: HTMLElement;
+  } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Event | null>(null);
 
-  // Best-effort migration from a previously-installed PWA: nothing to
-  // do today but the hook keeps the symmetry with Android's onStart.
   useEffect(() => {
     /* noop */
   }, []);
@@ -49,7 +64,10 @@ export function EventsListScreen() {
     navigate(`/event/${evt.id}`);
   };
 
-  if (events == null) return null;
+  if (allEvents == null) return null;
+
+  const visible = allEvents.filter((e) => !!e.archived === showArchived);
+  const hasArchived = allEvents.some((e) => e.archived);
 
   return (
     <Stack spacing={2} sx={{ flex: 1 }}>
@@ -71,24 +89,99 @@ export function EventsListScreen() {
         </Button>
       </Stack>
 
-      {events.length === 0 && (
+      {hasArchived && (
+        <FormControlLabel
+          control={
+            <Switch
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+            />
+          }
+          label={fr.events.archived}
+        />
+      )}
+
+      {visible.length === 0 && (
         <Typography color="text.secondary">{fr.events.empty}</Typography>
       )}
 
-      {events.map((e) => (
+      {visible.map((e) => (
         <Card key={e.id} variant="outlined">
-          <CardActionArea onClick={() => navigate(`/event/${e.id}`)}>
-            <CardContent>
-              <Typography variant="h6">{e.name}</Typography>
-              {e.description && (
-                <Typography variant="body2" color="text.secondary">
-                  {e.description}
-                </Typography>
-              )}
-            </CardContent>
-          </CardActionArea>
+          <Stack direction="row" alignItems="center">
+            <CardActionArea
+              onClick={() => navigate(`/event/${e.id}`)}
+              sx={{ flex: 1 }}
+            >
+              <CardContent>
+                <Typography variant="h6">{e.name}</Typography>
+                {e.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {e.description}
+                  </Typography>
+                )}
+              </CardContent>
+            </CardActionArea>
+            <IconButton
+              onClick={(ev) => {
+                ev.stopPropagation();
+                setMenuFor({ event: e, anchor: ev.currentTarget });
+              }}
+              aria-label="more"
+              sx={{ mr: 0.5 }}
+            >
+              <MoreVertIcon />
+            </IconButton>
+          </Stack>
         </Card>
       ))}
+
+      <Menu
+        anchorEl={menuFor?.anchor ?? null}
+        open={menuFor != null}
+        onClose={() => setMenuFor(null)}
+      >
+        {menuFor && !menuFor.event.archived && (
+          <MenuItem
+            onClick={async () => {
+              const id = menuFor.event.id;
+              setMenuFor(null);
+              await setEventArchived(id, true);
+            }}
+          >
+            {fr.events.archive}
+          </MenuItem>
+        )}
+        {menuFor && menuFor.event.archived && (
+          <MenuItem
+            onClick={async () => {
+              const id = menuFor.event.id;
+              setMenuFor(null);
+              await setEventArchived(id, false);
+            }}
+          >
+            {fr.events.unarchive}
+          </MenuItem>
+        )}
+        <MenuItem
+          onClick={() => {
+            if (menuFor) setConfirmDelete(menuFor.event);
+            setMenuFor(null);
+          }}
+        >
+          {fr.events.deleteLocal}
+        </MenuItem>
+      </Menu>
+
+      <ConfirmDialog
+        open={confirmDelete != null}
+        title={fr.events.confirmDeleteLocal}
+        confirmLabel={fr.events.deleteLocal}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={async () => {
+          if (confirmDelete) await deleteEventLocally(confirmDelete.id);
+          setConfirmDelete(null);
+        }}
+      />
 
       <Dialog open={creating} onClose={() => setCreating(false)} fullWidth>
         <DialogTitle>{fr.events.create}</DialogTitle>
@@ -117,7 +210,6 @@ export function EventsListScreen() {
         </DialogActions>
       </Dialog>
 
-      {/* FAB-ish floater for mobile; keeps the action thumb-reachable. */}
       <Box sx={{ position: "fixed", right: 16, bottom: 16 }}>
         <IconButton
           color="primary"
