@@ -17,23 +17,18 @@ import com.fairshare.domain.repository.CategoryRepository
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ExpenseRepository
 import com.fairshare.domain.repository.ParticipantRepository
-import com.fairshare.domain.repository.SettingsRepository
 import com.fairshare.domain.usecase.ComputeBalancesUseCase
 import com.fairshare.domain.usecase.CategoryStat
 import com.fairshare.domain.usecase.ComputeCategoryStatsUseCase
 import com.fairshare.presentation.navigation.Route
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -73,7 +68,6 @@ class EventDetailViewModel @Inject constructor(
     private val computeBalances: ComputeBalancesUseCase,
     private val computeCategoryStats: ComputeCategoryStatsUseCase,
     private val syncCoordinator: SyncCoordinator,
-    private val settings: SettingsRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -103,31 +97,15 @@ class EventDetailViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    private var pollJob: Job? = null
-
     /**
-     * Starts the foreground polling loop scoped to this event. Called
-     * from the screen ON_RESUME, cancelled on ON_PAUSE. The first tick
-     * is silent (no spinner) so navigating back to the screen doesn't
-     * flash the refresh indicator; only manual pull-to-refresh shows it.
+     * Called from the screen ON_RESUME. Performs a single silent
+     * pull (no spinner) so any push notification missed while the
+     * screen was off is caught up. Real-time updates otherwise arrive
+     * via FCM (see `FairShareMessagingService`); the pull-to-refresh
+     * spinner is reserved for explicit user gestures.
      */
-    fun resumePolling() {
-        if (pollJob?.isActive == true) return
-        pollJob = viewModelScope.launch {
-            // Respect the auto-refresh setting: when off, the screen
-            // only syncs via manual pull-to-refresh.
-            if (!settings.autoRefreshEnabled.first()) return@launch
-            silentRefresh()
-            while (isActive) {
-                delay(POLL_INTERVAL_MS)
-                silentRefresh()
-            }
-        }
-    }
-
-    fun stopPolling() {
-        pollJob?.cancel()
-        pollJob = null
+    fun onResume() {
+        viewModelScope.launch { silentRefresh() }
     }
 
     fun refresh() {
@@ -211,14 +189,5 @@ class EventDetailViewModel @Inject constructor(
             )
         )
         SyncWorker.enqueueOneShot(context, eventId)
-    }
-
-    override fun onCleared() {
-        stopPolling()
-        super.onCleared()
-    }
-
-    private companion object {
-        const val POLL_INTERVAL_MS = 10_000L
     }
 }

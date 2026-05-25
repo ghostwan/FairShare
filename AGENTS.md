@@ -56,8 +56,11 @@ repository. Read this in full before doing anything.
   is snapshot-based LWW driven by an op log (`data/sync/`). Pairing is
   done via QR-code invitations (`fairshare://join?...`) handled by
   `data/invitation/` + `presentation/invite/` + `presentation/join/`.
-  Foreground screens poll every 10 s by default; user can turn the
-  poll off in Settings (key `auto_refresh_enabled`).
+  Foreground screens receive real-time updates via FCM push (fan-out
+  by the Worker to all paired devices). Each screen does a single
+  silent pull on `ON_RESUME` to catch up on anything missed while off;
+  the user can also pull-to-refresh or hit "Synchroniser maintenant"
+  in Settings.
 
 ## Important paths
 

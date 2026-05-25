@@ -9,18 +9,14 @@ import com.fairshare.domain.model.Event
 import com.fairshare.domain.model.Participant
 import com.fairshare.domain.repository.EventRepository
 import com.fairshare.domain.repository.ParticipantRepository
-import com.fairshare.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,7 +25,6 @@ class EventsViewModel @Inject constructor(
     private val eventRepository: EventRepository,
     private val participantRepository: ParticipantRepository,
     private val syncCoordinator: SyncCoordinator,
-    private val settings: SettingsRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -46,32 +41,15 @@ class EventsViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    private var pollJob: Job? = null
-
     /**
-     * Starts the foreground polling loop. Called from the screen's
-     * ON_RESUME. Performs an immediate silent pull (no spinner) then
-     * ticks every [POLL_INTERVAL_MS] until [stopPolling]. The
-     * pull-to-refresh spinner is reserved for explicit user gestures
-     * so the UI doesn't flash on every screen resume.
+     * Called from the screen's ON_RESUME. Performs a single silent
+     * pull (no spinner) so any push notification missed while the
+     * screen was off is caught up. Real-time updates otherwise arrive
+     * via FCM (see `FairShareMessagingService`); the pull-to-refresh
+     * spinner is reserved for explicit user gestures.
      */
-    fun resumePolling() {
-        if (pollJob?.isActive == true) return
-        pollJob = viewModelScope.launch {
-            // Respect the auto-refresh setting: if disabled, the screen
-            // is only refreshed via manual pull-to-refresh.
-            if (!settings.autoRefreshEnabled.first()) return@launch
-            silentRefresh()
-            while (isActive) {
-                delay(POLL_INTERVAL_MS)
-                silentRefresh()
-            }
-        }
-    }
-
-    fun stopPolling() {
-        pollJob?.cancel()
-        pollJob = null
+    fun onResume() {
+        viewModelScope.launch { silentRefresh() }
     }
 
     fun refresh() {
@@ -128,14 +106,5 @@ class EventsViewModel @Inject constructor(
             eventRepository.update(current.copy(archived = archived))
             SyncWorker.enqueueOneShot(context, id)
         }
-    }
-
-    override fun onCleared() {
-        stopPolling()
-        super.onCleared()
-    }
-
-    private companion object {
-        const val POLL_INTERVAL_MS = 10_000L
     }
 }

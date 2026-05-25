@@ -40,11 +40,9 @@ fun EventsScreen(
     var contextMenu by remember { mutableStateOf<Event?>(null) }
     var pendingDelete by remember { mutableStateOf<Event?>(null) }
 
-    // Trigger a sync every time the screen comes back to the foreground,
-    // then poll every 10s while resumed so changes from other devices
-    // appear without manual refresh. Stopped in ON_PAUSE.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.resumePolling() }
-    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { vm.stopPolling() }
+    // Catch up on any push notification missed while the screen was off.
+    // Real-time updates otherwise arrive via FCM.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onResume() }
 
     Scaffold(
         topBar = {

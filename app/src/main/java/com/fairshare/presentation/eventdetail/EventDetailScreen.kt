@@ -58,11 +58,9 @@ fun EventDetailScreen(
     var showRename by rememberSaveable { mutableStateOf(false) }
     val currency = state.event?.currency ?: "EUR"
 
-    // Refresh from cloud every time the screen is resumed, then poll
-    // every 10s while in foreground so remote changes show up without
-    // pull-to-refresh. Stopped in ON_PAUSE.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.resumePolling() }
-    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { vm.stopPolling() }
+    // Catch up on any push notification missed while the screen was off.
+    // Real-time updates otherwise arrive via FCM.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onResume() }
 
     Scaffold(
         topBar = {

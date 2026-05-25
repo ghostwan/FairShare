@@ -49,7 +49,6 @@ fun SettingsScreen(
     val apiKey by vm.geminiApiKey.collectAsState()
     val model by vm.geminiModel.collectAsState()
     val cloudUrl by vm.cloudBaseUrl.collectAsState()
-    val autoRefresh by vm.autoRefreshEnabled.collectAsState()
     val syncStatus by vm.syncStatus.collectAsState()
     var showKey by remember { mutableStateOf(false) }
 
@@ -137,23 +136,9 @@ fun SettingsScreen(
                 modifier = Modifier.padding(start = 16.dp, top = 24.dp, end = 16.dp),
             )
             Text(
-                "Les ops chiffrées (AES-256-GCM) sont relayées par un Worker Cloudflare. La clé reste sur tes appareils — laisse l'URL par défaut sauf si tu héberges ton propre Worker.",
+                "Les ops chiffrées (AES-256-GCM) sont relayées par un Worker Cloudflare. La clé reste sur tes appareils — laisse l'URL par défaut sauf si tu héberges ton propre Worker. Les mises à jour arrivent en temps réel via notifications push ; tu peux aussi tirer-pour-rafraîchir ou utiliser le bouton ci-dessous.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-            ListItem(
-                headlineContent = { Text("Rafraîchissement automatique") },
-                supportingContent = {
-                    Text(
-                        if (autoRefresh)
-                            "Les écrans interrogent le Worker toutes les 10 s en avant-plan. Désactive si ça consomme trop de batterie ou de données."
-                        else
-                            "Sync uniquement via le bouton « Synchroniser maintenant » ou tirer-pour-rafraîchir."
-                    )
-                },
-                trailingContent = {
-                    Switch(checked = autoRefresh, onCheckedChange = vm::setAutoRefreshEnabled)
-                },
             )
             OutlinedTextField(
                 value = cloudUrl,
