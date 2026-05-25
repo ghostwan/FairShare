@@ -1,8 +1,10 @@
 package com.fairshare.data.invitation
 
+import android.util.Log
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.sync.OperationApplier
+import com.fairshare.data.sync.PushTokenRegistrar
 import com.fairshare.domain.model.sync.OpOrigin
 import com.fairshare.domain.model.sync.OpPayload
 import com.fairshare.domain.model.sync.Operation
@@ -26,6 +28,7 @@ import javax.inject.Singleton
 class InvitationImporter @Inject constructor(
     private val eventDao: EventDao,
     private val applier: OperationApplier,
+    private val pushRegistrar: PushTokenRegistrar,
 ) {
     /** Failure modes [preview] / [apply] can hit. */
     sealed interface ImportError {
@@ -88,6 +91,11 @@ class InvitationImporter @Inject constructor(
             )
         }
         applier.apply(preview.ops, OpOrigin.LOCAL)
+        // Register for FCM pushes on the joined event so subsequent
+        // ops emitted by other paired devices reach us without polling.
+        pushRegistrar.register(decoded.eventId).onFailure {
+            Log.w("InvitationImporter", "FCM register failed for ${decoded.eventId}: ${it.message}")
+        }
         return Result.success(preview)
     }
 

@@ -4,6 +4,7 @@ import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.dao.OperationDao
 import com.fairshare.data.local.entity.EventEntity
 import com.fairshare.data.sync.OperationApplier
+import com.fairshare.data.sync.PushTokenRegistrar
 import com.fairshare.domain.model.Event
 import com.fairshare.domain.model.sync.EventSnapshot
 import com.fairshare.domain.model.sync.OpPayload
@@ -11,6 +12,7 @@ import com.fairshare.domain.repository.EventRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import android.util.Log
 import java.security.SecureRandom
 import java.util.UUID
 import javax.inject.Inject
@@ -38,6 +40,7 @@ class EventRepositoryImpl @Inject constructor(
     private val dao: EventDao,
     private val operationDao: OperationDao,
     private val applier: OperationApplier,
+    private val pushRegistrar: PushTokenRegistrar,
 ) : EventRepository {
 
     private val secureRandom = SecureRandom()
@@ -76,6 +79,13 @@ class EventRepositoryImpl @Inject constructor(
             eventId = id,
             payload = OpPayload.EventUpsert(event.copy(id = id).toSnapshot()),
         )
+        // Register for FCM pushes on the freshly created event so
+        // peers that subsequently join via invitation also push to us.
+        // Failure is non-fatal: the polling fallback (or the next
+        // app startup re-registration) will catch up.
+        pushRegistrar.register(id).onFailure {
+            Log.w("EventRepository", "FCM register failed for $id: ${it.message}")
+        }
         return id
     }
 
@@ -87,6 +97,13 @@ class EventRepositoryImpl @Inject constructor(
     }
 
     override suspend fun delete(id: String) {
+        // Unregister our FCM token first so the Worker stops fanning
+        // out pushes to a device that no longer cares. Best-effort:
+        // failure leaves a stale token that the Worker will prune on
+        // its next UNREGISTERED FCM response.
+        pushRegistrar.unregister(id).onFailure {
+            Log.w("EventRepository", "FCM unregister failed for $id: ${it.message}")
+        }
         // Local-only "remove from this device": we intentionally do NOT
         // emit an EventDelete op. Emitting a tombstone would mean that
         // re-importing the same event from a peer would silently lose to

@@ -8,3 +8,6 @@ local.properties
 captures/
 .cxx/
 .kotlin/
+
+# Firebase config (per-developer; obtain from Firebase console)
+app/google-services.json
