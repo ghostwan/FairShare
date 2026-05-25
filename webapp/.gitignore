@@ -1,0 +1,38 @@
+# Build output
+dist/
+dev-dist/
+
+# TypeScript project-references build artefacts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+vitest.config.js
+vitest.config.d.ts
+playwright.config.js
+playwright.config.d.ts
+
+# Dependencies
+node_modules/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# Vitest
+coverage/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local env
+.env
+.env.local
+.env.*.local
