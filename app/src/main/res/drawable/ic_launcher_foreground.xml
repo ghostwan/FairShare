@@ -8,7 +8,7 @@
     All paths are filled (no strokes) so adaptive-icon masking stays
     pixel-perfect at every density.
 
-    Background color: @color/ic_launcher_background (#2E7D5B dark green).
+    Background color: @color/ic_launcher_background (#1976D2 Material blue).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -23,23 +23,23 @@
 
     <!-- Diagonal split line through the disc, in background green. -->
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="#1976D2"
         android:pathData="M36,72 L70,38 L72,40 L38,74 Z" />
 
     <!-- Left "person" mark: euro symbol fragment (two horizontal bars). -->
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="#1976D2"
         android:pathData="M40,48 L52,48 L52,50.5 L40,50.5 Z" />
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="#1976D2"
         android:pathData="M40,52.5 L52,52.5 L52,55 L40,55 Z" />
 
     <!-- Right "person" mark: euro symbol fragment (two horizontal bars). -->
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="#1976D2"
         android:pathData="M56,53 L68,53 L68,55.5 L56,55.5 Z" />
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="#1976D2"
         android:pathData="M56,57.5 L68,57.5 L68,60 L56,60 Z" />
 
     <!-- Top-right share arrow (chevron pointing up-right). -->
