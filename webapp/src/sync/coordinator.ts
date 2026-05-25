@@ -118,7 +118,32 @@ export async function emit(
   };
   await persistLocalOp(op);
   await rematerialise(eventId);
+  // Fire-and-forget background push so writes propagate to other
+  // paired devices without waiting for the next manual refresh /
+  // foreground resume. Coalesced per eventId on a short debounce so
+  // a burst of writes (e.g. editing every item of a scanned receipt
+  // in a row) only triggers one HTTP round-trip. Errors are swallowed
+  // on purpose — the op stays `pendingPush=1` and will be retried on
+  // the next `syncNow` / visibility change.
+  scheduleBackgroundPush(eventId);
   return op;
+}
+
+const PUSH_DEBOUNCE_MS = 400;
+const pendingPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleBackgroundPush(eventId: string): void {
+  const existing = pendingPushTimers.get(eventId);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    pendingPushTimers.delete(eventId);
+    push(eventId).catch((e) => {
+      // Offline / Worker down / no key: leave the op queued, log so
+      // it shows up in DevTools without crashing the UI.
+      console.warn(`background push failed for ${eventId}`, e);
+    });
+  }, PUSH_DEBOUNCE_MS);
+  pendingPushTimers.set(eventId, timer);
 }
 
 async function persistLocalOp(op: Operation): Promise<void> {
