@@ -57,10 +57,28 @@ class InvitationCodecTest {
     fun `encode then decode round-trips key and ops`() {
         val ops = sampleOps()
         val url = InvitationCodec.encode(eventId, ops, key)
-        assertTrue(url.startsWith("fairshare://join?"))
+        assertTrue(url.startsWith("https://fairshare-web.pages.dev/join?"))
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals(eventId, decoded.eventId)
         assertTrue(decoded.eventKey.contentEquals(key))
+        assertEquals(ops, decoded.ops)
+    }
+
+    @Test
+    fun `encode emits the legacy custom scheme when requested`() {
+        val ops = sampleOps()
+        val url = InvitationCodec.encode(eventId, ops, key, InvitationCodec.Host.Custom)
+        assertTrue(url.startsWith("fairshare://join?"))
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertEquals(eventId, decoded.eventId)
+        assertEquals(ops, decoded.ops)
+    }
+
+    @Test
+    fun `decode accepts the legacy custom scheme`() {
+        val ops = sampleOps()
+        val url = InvitationCodec.encode(eventId, ops, key, InvitationCodec.Host.Custom)
+        val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals(ops, decoded.ops)
     }
 

@@ -39,6 +39,8 @@ internal object InvitationCodec {
 
     const val SCHEME = "fairshare"
     const val HOST = "join"
+    const val HTTPS_HOST = "fairshare-web.pages.dev"
+    const val HTTPS_PATH = "/join"
 
     /** Returned by [decode] on a valid invitation. */
     data class Decoded(
@@ -76,11 +78,31 @@ internal object InvitationCodec {
     }
 
     /**
-     * Builds a `fairshare://join` invitation URL. Carries the event
-     * encryption key plus the whole op log as a seed, so the joining
-     * device reaches parity in a single import.
+     * Selects which URL flavour [encode] emits.
+     *
+     *   - [Https] (default): produces
+     *     `https://fairshare-web.pages.dev/join?…`, so iOS Safari and
+     *     iPadOS Camera open the link natively — that's the form the
+     *     webapp uses to bootstrap its IndexedDB.
+     *   - [Custom]: keeps the legacy `fairshare://join?…` form, useful
+     *     for in-app deep linking on Android-only flows and for any
+     *     printed QR predating the webapp.
+     *
+     * [decode] accepts both forms regardless of this setting.
      */
-    fun encode(eventId: String, ops: List<Operation>, eventKey: ByteArray): String {
+    enum class Host { Https, Custom }
+
+    /**
+     * Builds an invitation URL. Carries the event encryption key plus
+     * the whole op log as a seed, so the joining device reaches parity
+     * in a single import.
+     */
+    fun encode(
+        eventId: String,
+        ops: List<Operation>,
+        eventKey: ByteArray,
+        host: Host = Host.Https,
+    ): String {
         require(eventKey.size == 32) { "eventKey must be 32 bytes, got ${eventKey.size}" }
         require(ops.all { it.eventId == eventId }) {
             "InvitationCodec.encode: all ops must share eventId=$eventId"
@@ -95,7 +117,11 @@ internal object InvitationCodec {
                 seed.toByteArray(Charsets.US_ASCII),
             ),
         )
-        return "$SCHEME://$HOST?event=$eventId&key=$key&seed=$seed&sig=$mac"
+        val query = "event=$eventId&key=$key&seed=$seed&sig=$mac"
+        return when (host) {
+            Host.Https -> "https://$HTTPS_HOST$HTTPS_PATH?$query"
+            Host.Custom -> "$SCHEME://$HOST?$query"
+        }
     }
 
     /** Parses an invitation URL, verifies its HMAC, returns the bundle. */
@@ -150,9 +176,20 @@ internal object InvitationCodec {
     }
 
     private fun parseUrl(url: String): Map<String, String>? {
-        val prefix = "$SCHEME://$HOST?"
-        if (!url.startsWith(prefix)) return null
-        val query = url.substring(prefix.length)
+        val customPrefix = "$SCHEME://$HOST?"
+        val query = when {
+            url.startsWith(customPrefix) -> url.substring(customPrefix.length)
+            // Accept any https host with a `/join?` path so staging
+            // deployments (e.g. preview channels of the webapp) or a
+            // self-hosted mirror work without a code change. The
+            // canonical host emitted by `encode()` stays
+            // fairshare-web.pages.dev.
+            else -> {
+                val match = Regex("^https?://[^/?#]+/join\\?(.*)$").find(url)
+                    ?: return null
+                match.groupValues[1]
+            }
+        }
         if (query.isEmpty()) return null
         return query.split('&').mapNotNull { pair ->
             val eq = pair.indexOf('=')
