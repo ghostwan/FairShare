@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -20,6 +20,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/Share";
+import SyncIcon from "@mui/icons-material/Sync";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router-dom";
 import { getDb } from "@/data/db";
@@ -49,6 +50,8 @@ import type { Category } from "@/core/domain/models";
 import { TextPromptDialog } from "../components/TextPromptDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CategoryEditorDialog } from "../components/CategoryEditorDialog";
+import { syncNow } from "@/sync/coordinator";
+import { Alert } from "@mui/material";
 
 type TabKey = "expenses" | "balances" | "participants" | "categories";
 
@@ -80,25 +83,7 @@ export function EventDetailScreen() {
   );
 
   if (event == null) {
-    return (
-      <Stack spacing={2} alignItems="center" sx={{ pt: 4 }}>
-        <Typography variant="body1" align="center">
-          Aucune donnée pour cet évènement.
-        </Typography>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          align="center"
-          sx={{ maxWidth: 360 }}
-        >
-          L'autre device n'a peut-être pas encore poussé l'historique
-          vers le serveur de sync. Utilise le bouton de rafraîchissement
-          en haut à droite, ou demande à la personne qui t'a invité
-          d'ouvrir l'app puis "Synchroniser maintenant" dans les
-          paramètres.
-        </Typography>
-      </Stack>
-    );
+    return <EmptyEventState eventId={eventId} />;
   }
 
   return (
@@ -142,6 +127,79 @@ export function EventDetailScreen() {
       )}
       {tab === "categories" && (
         <CategoriesTab eventId={eventId} categories={categories} />
+      )}
+    </Stack>
+  );
+}
+
+function EmptyEventState({ eventId }: { eventId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRan, setAutoRan] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await syncNow(eventId);
+      if (r.error) {
+        setError(
+          `${r.error.message}${r.error.status ? ` (HTTP ${r.error.status})` : ""}`,
+        );
+      } else {
+        setResult(
+          `Push: ${r.pushed} · Pull: ${r.pulled}. ` +
+            (r.pulled === 0
+              ? "Le serveur n'a rien renvoyé. L'autre device n'a probablement pas poussé l'historique : demande-lui d'ouvrir l'app puis « Synchroniser maintenant » dans les réglages."
+              : "Si rien ne s'affiche, recharge la page."),
+        );
+      }
+    } catch (e) {
+      setError(`${(e as Error).message ?? e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Auto-trigger one sync on mount: most of the time the bootstrap
+  // already pulled, but if the user arrived here via stale state
+  // (page reload, swipe-back from join) a fresh attempt is cheap.
+  useEffect(() => {
+    if (autoRan) return;
+    setAutoRan(true);
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Stack spacing={2} alignItems="stretch" sx={{ pt: 4, maxWidth: 480, mx: "auto" }}>
+      <Typography variant="body1" align="center">
+        Aucune donnée pour cet évènement.
+      </Typography>
+      <Typography variant="body2" color="text.secondary" align="center">
+        On essaie de récupérer l'historique depuis le serveur. Si rien
+        n'arrive, demande à la personne qui t'a invité d'ouvrir l'app
+        puis « Synchroniser maintenant » dans les réglages.
+      </Typography>
+      <Button
+        variant="contained"
+        startIcon={<SyncIcon />}
+        onClick={() => void run()}
+        disabled={busy}
+      >
+        {busy ? "Synchronisation…" : "Synchroniser maintenant"}
+      </Button>
+      {result && (
+        <Alert severity="info" sx={{ whiteSpace: "pre-wrap" }}>
+          {result}
+        </Alert>
+      )}
+      {error && (
+        <Alert severity="error" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {error}
+        </Alert>
       )}
     </Stack>
   );

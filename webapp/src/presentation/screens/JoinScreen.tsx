@@ -15,6 +15,7 @@ import {
   InvitationDecodeException,
 } from "@/core/invitation/codec";
 import { bootstrapFromInvitation } from "@/sync/coordinator";
+import { WorkerTransportError } from "@/core/sync/transport";
 
 /**
  * Join an existing event from another device's invitation. Three paths:
@@ -47,16 +48,19 @@ export function JoinScreen() {
     setError(null);
     try {
       const inv = decodeInvitation(url.trim());
-      const { pulled: _ } = await bootstrapFromInvitation(
-        inv.eventId,
-        inv.eventKey,
-      );
+      await bootstrapFromInvitation(inv.eventId, inv.eventKey);
       navigate(`/event/${inv.eventId}`, { replace: true });
     } catch (e) {
       if (e instanceof InvitationDecodeException) {
         setError(fr.join.invalid);
+      } else if (e instanceof WorkerTransportError) {
+        // Surface the underlying transport failure so the user knows
+        // whether it's a network issue, a CORS preflight reject, or
+        // a 401 (bearer mismatch — would mean the URL key was
+        // tampered with or the inviter never pushed).
+        setError(`Sync: ${e.message}`);
       } else {
-        setError(fr.common.error);
+        setError(`${fr.common.error}: ${(e as Error).message ?? e}`);
       }
     } finally {
       setBusy(false);
@@ -122,10 +126,13 @@ export function JoinScreen() {
 
       <Snackbar
         open={error != null}
-        autoHideDuration={4000}
         onClose={() => setError(null)}
       >
-        <Alert severity="error" onClose={() => setError(null)}>
+        <Alert
+          severity="error"
+          onClose={() => setError(null)}
+          sx={{ maxWidth: 360, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+        >
           {error}
         </Alert>
       </Snackbar>

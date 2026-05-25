@@ -281,18 +281,12 @@ export async function bootstrapFromInvitation(
   const secret = await getEventSecret(eventId);
 
   // Mandatory push-first to register the bearer verifier server-side.
+  // We intentionally let push errors propagate to the caller: if we
+  // can't even reach the Worker, the joining UI should know and not
+  // pretend the bootstrap succeeded with 0 ops.
   const t = await transport();
-  try {
-    await t.push(eventId, secret.bearer, []);
-  } catch (e) {
-    console.warn("bootstrap: bearer registration ping failed", e);
-  }
-  try {
-    return await pull(eventId);
-  } catch (e) {
-    console.warn("bootstrap: initial pull failed", e);
-    return { pulled: 0 };
-  }
+  await t.push(eventId, secret.bearer, []);
+  return await pull(eventId);
 }
 
 /**
