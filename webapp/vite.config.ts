@@ -24,7 +24,7 @@ export default defineConfig({
         short_name: "FairShare",
         description:
           "Partage de dépenses entre amis, paire avec l'app Android via QR-code.",
-        theme_color: "#1976d2",
+        theme_color: "#2E7D5B",
         background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",
