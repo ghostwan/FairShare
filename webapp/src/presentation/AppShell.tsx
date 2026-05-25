@@ -65,6 +65,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Back navigation: pop history when we have something to pop, but
+  // fall back to the events list when the current entry was the very
+  // first one in this tab (typical case: the user opened a
+  // `fairshare://join?...` deep link or scanned a QR — `navigate(-1)`
+  // would otherwise be a no-op or close the PWA). Mirrors Android's
+  // navigation graph, which always keeps the events list as the
+  // start destination underneath any deep-linked screen.
+  const handleBack = () => {
+    // React Router stamps an `idx` on history.state when it owns the
+    // entry; 0 means "first one we ever pushed" → nothing to pop.
+    const idx =
+      typeof window !== "undefined"
+        ? (window.history.state as { idx?: number } | null)?.idx ?? 0
+        : 0;
+    if (idx > 0) navigate(-1);
+    else navigate("/", { replace: true });
+  };
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <AppBar position="sticky" color="primary" enableColorOnDark>
@@ -74,7 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               edge="start"
               color="inherit"
               aria-label="back"
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               sx={{ mr: 1 }}
             >
               <ArrowBackIcon />
