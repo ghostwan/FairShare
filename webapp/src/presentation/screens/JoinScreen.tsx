@@ -17,17 +17,22 @@ import {
 import { bootstrapFromInvitation } from "@/sync/coordinator";
 
 /**
- * Join an existing event from another device's invitation. Two paths:
+ * Join an existing event from another device's invitation. Three paths:
  *
- *   1. QR scan via `getUserMedia` + jsQR. We keep the camera live and
- *      sample frames at ~10fps off a hidden canvas; the first decoded
- *      payload that parses as a valid `fairshare://join` (or the https
- *      mirror) wins.
+ *   1. **Auto-bootstrap from URL**: when the user lands on
+ *      `/join?event=…&key=…` (the case for any QR scanned by an
+ *      external camera app on iOS / Android that opens the link in
+ *      Safari/Chrome), we read `window.location.href` on mount and
+ *      run the join flow immediately. No tap required.
  *
- *   2. Manual paste — covers iOS Safari quirks (camera permission
- *      denied, opened from the Files app, etc.). The user pastes the
- *      full URL; we still validate the HMAC server-free, so a typo
- *      surfaces as `signatureFailed` rather than a confusing pull error.
+ *   2. QR scan via `getUserMedia` + jsQR for in-app scanning. We keep
+ *      the camera live and sample frames at ~10fps off a hidden
+ *      canvas; the first decoded payload that parses as a valid
+ *      `fairshare://join` (or the https mirror) wins.
+ *
+ *   3. Manual paste — covers cases where the auto-bootstrap couldn't
+ *      reach the URL (someone forwarded the link as plain text, or
+ *      the user navigated here manually).
  */
 export function JoinScreen() {
   const navigate = useNavigate();
@@ -35,6 +40,7 @@ export function JoinScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [autoTried, setAutoTried] = useState(false);
 
   const submit = async (url: string) => {
     setBusy(true);
@@ -56,6 +62,21 @@ export function JoinScreen() {
       setBusy(false);
     }
   };
+
+  // Auto-bootstrap when the user lands here from an external scan of
+  // the inviter's QR (URL already carries event + key). We use the
+  // current location.href so the codec sees the canonical form.
+  useEffect(() => {
+    if (autoTried) return;
+    setAutoTried(true);
+    if (typeof window === "undefined") return;
+    const search = window.location.search;
+    if (!search || !search.includes("event=") || !search.includes("key=")) {
+      return;
+    }
+    void submit(window.location.href);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Stack spacing={2}>
