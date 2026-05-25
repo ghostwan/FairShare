@@ -90,8 +90,6 @@ export const fr = {
       "L'invitation ressemble à https://fairshare-web-bdg.pages.dev/join?event=…",
     submit: "Rejoindre",
     invalid: "Lien d'invitation invalide.",
-    signatureFailed:
-      "Signature invalide. Le lien a été altéré ou vient d'une autre version de FairShare.",
     success: "Bienvenue dans l'événement",
   },
   settings: {

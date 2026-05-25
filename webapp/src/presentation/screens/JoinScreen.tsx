@@ -40,20 +40,15 @@ export function JoinScreen() {
     setBusy(true);
     setError(null);
     try {
-      const inv = await decodeInvitation(url.trim());
+      const inv = decodeInvitation(url.trim());
       const { pulled: _ } = await bootstrapFromInvitation(
         inv.eventId,
         inv.eventKey,
-        inv.ops,
       );
       navigate(`/event/${inv.eventId}`, { replace: true });
     } catch (e) {
       if (e instanceof InvitationDecodeException) {
-        setError(
-          e.error.kind === "SignatureMismatch"
-            ? fr.join.signatureFailed
-            : fr.join.invalid,
-        );
+        setError(fr.join.invalid);
       } else {
         setError(fr.common.error);
       }

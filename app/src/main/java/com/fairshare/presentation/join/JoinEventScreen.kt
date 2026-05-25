@@ -98,12 +98,10 @@ private fun Body(state: JoinEventState, onJoin: () -> Unit) {
         Text(
             "Invitation à rejoindre cet évènement. " +
                 "La clé de chiffrement est dans le lien — n'accepte " +
-                "que si tu fais confiance à la personne qui te l'a partagé.",
+                "que si tu fais confiance à la personne qui te l'a partagé. " +
+                "L'historique sera récupéré depuis le serveur de sync " +
+                "après acceptation.",
             style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "${state.opCount} opération${if (state.opCount > 1) "s" else ""} à importer.",
-            style = MaterialTheme.typography.bodySmall,
         )
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error)

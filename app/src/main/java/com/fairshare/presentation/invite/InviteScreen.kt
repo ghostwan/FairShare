@@ -92,7 +92,6 @@ fun InviteScreen(
                 state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.url != null -> Content(
                     url = state.url!!,
-                    opCount = state.opCount,
                     onCopy = { copyToClipboard(context, state.url!!) },
                     onShare = { shareText(context, state.url!!) },
                 )
@@ -108,7 +107,6 @@ fun InviteScreen(
 @Composable
 private fun Content(
     url: String,
-    opCount: Int,
     onCopy: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -121,9 +119,8 @@ private fun Content(
     ) {
         Text(
             "Le lien contient la clé de chiffrement : ne le partage " +
-                "qu'avec des personnes de confiance. " +
-                "$opCount opération${if (opCount > 1) "s" else ""} dans la seed — " +
-                "${url.length} caractères.",
+                "qu'avec des personnes de confiance. Le device qui rejoint " +
+                "récupère l'historique depuis le serveur de sync.",
             style = MaterialTheme.typography.bodyMedium,
         )
         QrCodeBlock(content = url)
@@ -131,7 +128,7 @@ private fun Content(
             value = url,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Lien fairshare://join") },
+            label = { Text("Lien d'invitation") },
             modifier = Modifier.fillMaxSize(),
             maxLines = 8,
         )

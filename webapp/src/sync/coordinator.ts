@@ -267,30 +267,18 @@ export async function syncNow(eventId: string): Promise<{
 }
 
 /**
- * One-shot import of an invitation bundle. Stores the secret, persists
- * the seed ops as already-pushed (the inviter has them), materialises,
- * then does the mandatory push-empty handshake so the Worker registers
- * our bearer, followed by a catch-up pull.
+ * One-shot import of an invitation bundle. Stores the secret, then
+ * runs the mandatory push-empty handshake so the Worker registers our
+ * bearer, followed by a full catch-up pull that fetches the entire op
+ * log. The invitation URL only carries `eventId + key` — the op log
+ * lives only on the Worker / inviter.
  */
 export async function bootstrapFromInvitation(
   eventId: string,
   eventKey: Uint8Array,
-  seedOps: Operation[],
 ): Promise<{ pulled: number }> {
   await rememberEventSecret(eventId, eventKey);
   const secret = await getEventSecret(eventId);
-  const cloudKey = await deriveCloudCipherKey(secret.key);
-  const db = getDb();
-  const rows: OpLogRow[] = [];
-  for (const op of seedOps) {
-    const existing = await db.opLog.get(op.opId);
-    if (existing) continue;
-    const enc = await encryptOp(op, cloudKey);
-    rows.push(toLogRow(op, enc, /*pendingPush*/ 0));
-    await catchUpLamport(op.lamport);
-  }
-  if (rows.length > 0) await db.opLog.bulkAdd(rows);
-  await rematerialise(eventId);
 
   // Mandatory push-first to register the bearer verifier server-side.
   const t = await transport();
@@ -417,24 +405,14 @@ function categorySnapshotToModel(s: CategorySnapshot): Category {
 export { base64UrlDecode };
 
 /**
- * Build an invitation URL for an event from local state. The seed is
- * the full op log scoped to the event so the joiner can replay history
- * without round-tripping through the Worker first — the
- * `bootstrapFromInvitation` path on the receiving device still issues
- * a catch-up pull for anything emitted after the QR was rendered.
+ * Build an invitation URL for an event from local state. Carries only
+ * the event id and the 32-byte encryption key; the joiner pulls the
+ * full op log from the Worker on first sync. Keeps the QR small and
+ * constant-size regardless of event history.
  */
 export async function buildInvitationForEvent(
   eventId: string,
 ): Promise<string> {
   const secret = await getEventSecret(eventId);
-  const rows = await getDb()
-    .opLog.where("eventId")
-    .equals(eventId)
-    .toArray();
-  const ops = rows
-    .sort((a, b) =>
-      a.lamport - b.lamport || a.opId.localeCompare(b.opId),
-    )
-    .map(rowToOp);
-  return encodeInvitation(eventId, ops, secret.key, "https");
+  return encodeInvitation(eventId, secret.key, "https");
 }

@@ -16,15 +16,14 @@ import javax.inject.Inject
 /**
  * UI state for the "Invite" screen.
  *
- * Builds a single `fairshare://join` URL carrying the event encryption
- * key plus the whole op log as a seed. Anyone with the URL can read
- * and write the event — treat it like a secret. Empty op logs still
- * produce a valid URL.
+ * Builds a single compact URL carrying just the eventId + 32-byte
+ * encryption key. Anyone with the URL can read and write the event —
+ * treat it like a secret. The joining device fetches the full history
+ * from the Cloudflare Worker on first sync.
  */
 data class InviteState(
     val loading: Boolean = true,
     val url: String? = null,
-    val opCount: Int = 0,
     val error: String? = null,
 )
 
@@ -51,7 +50,6 @@ class InviteViewModel @Inject constructor(
                     _state.value = InviteState(
                         loading = false,
                         url = export.url,
-                        opCount = export.opCount,
                     )
                 }
                 .onFailure { t ->
