@@ -75,7 +75,7 @@ function makeOps(): Operation[] {
 describe("invitation.codec", () => {
   it("round-trips https form", async () => {
     const url = await encodeInvitation(EVENT_ID, makeOps(), eventKey(), "https");
-    expect(url.startsWith("https://fairshare-web.pages.dev/join?")).toBe(true);
+    expect(url.startsWith("https://fairshare-web-bdg.pages.dev/join?")).toBe(true);
     const back = await decodeInvitation(url);
     expect(back.eventId).toBe(EVENT_ID);
     expect(back.eventKey).toEqual(eventKey());
@@ -103,7 +103,7 @@ describe("invitation.codec", () => {
 
   it("rejects a missing field", async () => {
     await expect(
-      decodeInvitation("https://fairshare-web.pages.dev/join?event=x&key=y"),
+      decodeInvitation("https://fairshare-web-bdg.pages.dev/join?event=x&key=y"),
     ).rejects.toMatchObject({ error: { kind: "MissingFields" } });
   });
 

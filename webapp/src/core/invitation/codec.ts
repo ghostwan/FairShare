@@ -25,7 +25,7 @@ import { gzip, ungzip } from "./gzip";
  *
  * Wire format (https variant used by the webapp QR code):
  *
- *   https://fairshare-web.pages.dev/join?event=…&key=…&seed=…&sig=…
+ *   https://fairshare-web-bdg.pages.dev/join?event=…&key=…&seed=…&sig=…
  *
  * Both forms carry the same four query parameters in any order and are
  * interchangeable: a device can accept either, and the webapp emits
@@ -40,7 +40,7 @@ import { gzip, ungzip } from "./gzip";
  */
 
 const SCHEME_CUSTOM = "fairshare://join?";
-const SCHEME_HTTPS_HOST_PATH = "fairshare-web.pages.dev/join?";
+const SCHEME_HTTPS_HOST_PATH = "fairshare-web-bdg.pages.dev/join?";
 
 export interface DecodedInvitation {
   eventId: string;
@@ -64,7 +64,7 @@ export class InvitationDecodeException extends Error {
  * Encode an invitation. `host` selects which URL flavour to emit:
  *
  *   - `"https"` (default for the webapp): produces the
- *     `https://fairshare-web.pages.dev/join?…` form so iOS Safari
+ *     `https://fairshare-web-bdg.pages.dev/join?…` form so iOS Safari
  *     opens it directly.
  *   - `"custom"`: produces the legacy `fairshare://join?…` form,
  *     useful for tests that want to round-trip with the Android

@@ -87,7 +87,7 @@ export const fr = {
     scan: "Scanner le QR-code",
     paste: "Coller un lien d'invitation",
     pasteHint:
-      "L'invitation ressemble à https://fairshare-web.pages.dev/join?event=…",
+      "L'invitation ressemble à https://fairshare-web-bdg.pages.dev/join?event=…",
     submit: "Rejoindre",
     invalid: "Lien d'invitation invalide.",
     signatureFailed:

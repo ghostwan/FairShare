@@ -91,7 +91,7 @@ export function JoinScreen() {
       <TextField
         value={pasted}
         onChange={(e) => setPasted(e.target.value)}
-        placeholder="https://fairshare-web.pages.dev/join?event=…"
+        placeholder="https://fairshare-web-bdg.pages.dev/join?event=…"
         multiline
         minRows={2}
         fullWidth

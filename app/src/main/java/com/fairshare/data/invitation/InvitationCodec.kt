@@ -39,7 +39,7 @@ internal object InvitationCodec {
 
     const val SCHEME = "fairshare"
     const val HOST = "join"
-    const val HTTPS_HOST = "fairshare-web.pages.dev"
+    const val HTTPS_HOST = "fairshare-web-bdg.pages.dev"
     const val HTTPS_PATH = "/join"
 
     /** Returned by [decode] on a valid invitation. */
@@ -81,7 +81,7 @@ internal object InvitationCodec {
      * Selects which URL flavour [encode] emits.
      *
      *   - [Https] (default): produces
-     *     `https://fairshare-web.pages.dev/join?…`, so iOS Safari and
+     *     `https://fairshare-web-bdg.pages.dev/join?…`, so iOS Safari and
      *     iPadOS Camera open the link natively — that's the form the
      *     webapp uses to bootstrap its IndexedDB.
      *   - [Custom]: keeps the legacy `fairshare://join?…` form, useful
@@ -183,7 +183,7 @@ internal object InvitationCodec {
             // deployments (e.g. preview channels of the webapp) or a
             // self-hosted mirror work without a code change. The
             // canonical host emitted by `encode()` stays
-            // fairshare-web.pages.dev.
+            // fairshare-web-bdg.pages.dev.
             else -> {
                 val match = Regex("^https?://[^/?#]+/join\\?(.*)$").find(url)
                     ?: return null

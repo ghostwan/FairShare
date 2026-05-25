@@ -57,7 +57,7 @@ class InvitationCodecTest {
     fun `encode then decode round-trips key and ops`() {
         val ops = sampleOps()
         val url = InvitationCodec.encode(eventId, ops, key)
-        assertTrue(url.startsWith("https://fairshare-web.pages.dev/join?"))
+        assertTrue(url.startsWith("https://fairshare-web-bdg.pages.dev/join?"))
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals(eventId, decoded.eventId)
         assertTrue(decoded.eventKey.contentEquals(key))
