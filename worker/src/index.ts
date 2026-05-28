@@ -22,6 +22,11 @@
  */
 
 import { fcmFanOut, parseServiceAccount, type ServiceAccount } from "./fcm";
+import {
+    webPushFanOut,
+    type VapidKeys,
+    type WebPushSubscription,
+} from "./web-push";
 
 export interface Env {
     DB: D1Database;
@@ -34,6 +39,21 @@ export interface Env {
      * resume-based syncs.
      */
     FCM_SERVICE_ACCOUNT?: string;
+    /**
+     * Optional. VAPID keypair for the Web Push fan-out (RFC 8292):
+     *   - VAPID_PRIVATE_KEY: base64url-encoded JWK JSON of the P-256
+     *     private key (must include `d`, `x`, `y`, `crv:"P-256"`,
+     *     `kty:"EC"`). Stored as a Worker secret.
+     *   - VAPID_PUBLIC_KEY: base64url-encoded uncompressed P-256
+     *     point (65 bytes; the `applicationServerKey` clients pass to
+     *     `pushManager.subscribe`). Exposed via `GET /web-push/key`.
+     *   - VAPID_SUBJECT: `mailto:…` or absolute URL.
+     * When any of them is absent, Web Push fan-out is skipped and the
+     * webapp keeps relying on focus-driven catch-up syncs.
+     */
+    VAPID_PRIVATE_KEY?: string;
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_SUBJECT?: string;
 }
 
 interface PushOp {
@@ -127,6 +147,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         return new Response("fairshare-sync ok\n", { headers: { "content-type": "text/plain" } });
     }
 
+    // Public, unauthenticated endpoint: the webapp fetches this once
+    // when subscribing to Web Push so it can pass the right
+    // `applicationServerKey` to `pushManager.subscribe`. We don't
+    // gate it on the bearer because by definition the client doesn't
+    // have an event yet at first install — and the public key is, well,
+    // public.
+    if (url.pathname === "/web-push/key") {
+        if (!env.VAPID_PUBLIC_KEY) return jsonError(404, "web_push_not_configured");
+        return Response.json({ publicKey: env.VAPID_PUBLIC_KEY });
+    }
+
     const opsMatch = url.pathname.match(/^\/events\/([^/]+)\/ops\/?$/);
     if (opsMatch) {
         const eventId = decodeURIComponent(opsMatch[1]);
@@ -162,6 +193,25 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
         if (request.method === "PUT") return handleRegisterToken(eventId, deviceId, bearer, request, env);
         if (request.method === "DELETE") return handleUnregisterToken(eventId, deviceId, env);
+        return jsonError(405, "method_not_allowed");
+    }
+
+    const webPushMatch = url.pathname.match(/^\/events\/([^/]+)\/devices\/([^/]+)\/web-push\/?$/);
+    if (webPushMatch) {
+        const eventId = decodeURIComponent(webPushMatch[1]);
+        const deviceId = decodeURIComponent(webPushMatch[2]);
+        if (!UUID_RE.test(eventId)) return jsonError(400, "bad_event_id");
+        if (deviceId.length === 0 || deviceId.length > MAX_DEVICE_ID_LEN) {
+            return jsonError(400, "bad_device_id");
+        }
+
+        const bearer = readBearer(request);
+        if (bearer == null) return jsonError(401, "missing_bearer");
+        const auth = await checkBearer(eventId, bearer, request.method === "PUT" ? "POST" : request.method, env);
+        if (!auth.ok) return jsonError(401, auth.code);
+
+        if (request.method === "PUT") return handleRegisterWebPush(eventId, deviceId, bearer, request, env);
+        if (request.method === "DELETE") return handleUnregisterWebPush(eventId, deviceId, env);
         return jsonError(405, "method_not_allowed");
     }
 
@@ -291,9 +341,14 @@ async function handlePush(
     // woken up to pull its own write). Fire-and-forget via waitUntil
     // so push latency stays dominated by the DB write, not by the
     // FCM round-trip. If FCM is not configured we simply skip.
-    if (inserted > 0 && env.FCM_SERVICE_ACCOUNT) {
+    if (inserted > 0) {
         const senderIds = new Set(body.ops.map(op => op.deviceId));
-        ctx.waitUntil(notifyPairedDevices(eventId, senderIds, env));
+        if (env.FCM_SERVICE_ACCOUNT) {
+            ctx.waitUntil(notifyPairedDevices(eventId, senderIds, env));
+        }
+        if (env.VAPID_PRIVATE_KEY && env.VAPID_PUBLIC_KEY && env.VAPID_SUBJECT) {
+            ctx.waitUntil(notifyWebPushSubscribers(eventId, senderIds, env));
+        }
     }
 
     return Response.json({ inserted });
@@ -351,6 +406,127 @@ async function notifyPairedDevices(
 
 interface RegisterTokenBody {
     fcmToken: string;
+}
+
+/**
+ * Fan-out a wake-up push to every Web Push subscription of the event
+ * (browsers/PWAs), excluding the senders. Mirrors `notifyPairedDevices`
+ * but speaks the standard Web Push protocol (RFC 8030/8291/8292)
+ * instead of FCM HTTP v1. Stale subscriptions (HTTP 410 Gone) are
+ * pruned in the same pass.
+ */
+async function notifyWebPushSubscribers(
+    eventId: string,
+    senderDeviceIds: Set<string>,
+    env: Env,
+): Promise<void> {
+    const vapid: VapidKeys = {
+        privateKey: env.VAPID_PRIVATE_KEY!,
+        publicKey: env.VAPID_PUBLIC_KEY!,
+        subject: env.VAPID_SUBJECT!,
+    };
+
+    const rows = await env.DB
+        .prepare(
+            "SELECT device_id, endpoint, p256dh, auth FROM web_push_subscriptions " +
+            "WHERE event_id = ?1",
+        )
+        .bind(eventId)
+        .all<{ device_id: string; endpoint: string; p256dh: string; auth: string }>();
+
+    const targets = (rows.results ?? [])
+        .filter(r => !senderDeviceIds.has(r.device_id))
+        .map<WebPushSubscription>(r => ({
+            endpoint: r.endpoint,
+            p256dh: r.p256dh,
+            auth: r.auth,
+        }));
+    if (targets.length === 0) return;
+
+    let result;
+    try {
+        result = await webPushFanOut(vapid, targets, { eventId });
+    } catch (err) {
+        console.error("web_push_fan_out_failed", err);
+        return;
+    }
+    console.log(
+        `web_push_fan_out event=${eventId} sent=${result.sent} failed=${result.failed} ` +
+        `stale=${result.staleEndpoints.length}`,
+    );
+
+    if (result.staleEndpoints.length > 0) {
+        const stmts = result.staleEndpoints.map(endpoint =>
+            env.DB
+                .prepare("DELETE FROM web_push_subscriptions WHERE event_id = ?1 AND endpoint = ?2")
+                .bind(eventId, endpoint),
+        );
+        await env.DB.batch(stmts);
+    }
+}
+
+interface RegisterWebPushBody {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+}
+
+async function handleRegisterWebPush(
+    eventId: string,
+    deviceId: string,
+    bearer: string,
+    request: Request,
+    env: Env,
+): Promise<Response> {
+    let body: RegisterWebPushBody;
+    try {
+        body = await request.json() as RegisterWebPushBody;
+    } catch {
+        return jsonError(400, "bad_json");
+    }
+    if (!body || typeof body.endpoint !== "string" ||
+        typeof body.p256dh !== "string" || typeof body.auth !== "string") {
+        return jsonError(400, "bad_shape");
+    }
+    const endpoint = body.endpoint.trim();
+    const p256dh = body.p256dh.trim();
+    const auth = body.auth.trim();
+    if (endpoint.length === 0 || endpoint.length > 2048) return jsonError(400, "bad_endpoint");
+    if (!/^https:\/\//i.test(endpoint)) return jsonError(400, "bad_endpoint_scheme");
+    // Base64url sanity (length must roughly match 65 bytes / 16 bytes
+    // post-decoding; we keep the upper bound loose).
+    if (p256dh.length < 80 || p256dh.length > 200) return jsonError(400, "bad_p256dh");
+    if (auth.length < 20 || auth.length > 64) return jsonError(400, "bad_auth");
+
+    await registerBearerIfNeeded(eventId, bearer, env);
+
+    await env.DB
+        .prepare(
+            "INSERT INTO web_push_subscriptions " +
+            "(event_id, device_id, endpoint, p256dh, auth, updated_at) " +
+            "VALUES (?1, ?2, ?3, ?4, ?5, ?6) " +
+            "ON CONFLICT(event_id, device_id) DO UPDATE SET " +
+            "endpoint = excluded.endpoint, " +
+            "p256dh = excluded.p256dh, " +
+            "auth = excluded.auth, " +
+            "updated_at = excluded.updated_at",
+        )
+        .bind(eventId, deviceId, endpoint, p256dh, auth, Date.now())
+        .run();
+
+    return Response.json({ ok: true });
+}
+
+async function handleUnregisterWebPush(
+    eventId: string,
+    deviceId: string,
+    env: Env,
+): Promise<Response> {
+    const result = await env.DB
+        .prepare("DELETE FROM web_push_subscriptions WHERE event_id = ?1 AND device_id = ?2")
+        .bind(eventId, deviceId)
+        .run();
+    return Response.json({ removed: result.meta.changes ?? 0 });
 }
 
 async function handleRegisterToken(
