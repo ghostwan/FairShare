@@ -8,9 +8,15 @@ import {
   Switch,
   TextField,
   Typography,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Link,
 } from "@mui/material";
 import QrCodeIcon from "@mui/icons-material/QrCode2";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { fr } from "@/i18n/fr";
 import { DEFAULTS, Settings } from "@/data/settings";
 import { ShareGeminiKeyDialog } from "../components/ShareGeminiKeyDialog";
@@ -104,6 +110,36 @@ export function SettingsScreen() {
         type="password"
         fullWidth
       />
+      <Accordion disableGutters elevation={0} sx={{ bgcolor: "transparent" }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0 }}>
+          <Typography variant="body2" color="text.secondary">
+            {fr.settings.geminiHelpTitle}
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails sx={{ px: 0, pt: 0 }}>
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">
+              {fr.settings.geminiHelpIntro}
+            </Typography>
+            <Typography component="ol" variant="body2" sx={{ pl: 3, m: 0 }}>
+              <li>{fr.settings.geminiHelpStep1}</li>
+              <li>{fr.settings.geminiHelpStep2}</li>
+              <li>{fr.settings.geminiHelpStep3}</li>
+              <li>{fr.settings.geminiHelpStep4}</li>
+            </Typography>
+            <Link
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}
+            >
+              {fr.settings.geminiHelpOpenStudio}
+              <OpenInNewIcon fontSize="inherit" />
+            </Link>
+          </Stack>
+        </AccordionDetails>
+      </Accordion>
       <TextField
         label={fr.settings.geminiModel}
         value={geminiModel}

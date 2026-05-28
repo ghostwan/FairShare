@@ -132,6 +132,18 @@ export const fr = {
     geminiKeyImported: "Clé Gemini importée",
     geminiKeyImportFailed: "QR invalide",
     geminiKeyMissing: "Renseignez une clé Gemini avant de la partager.",
+    geminiHelpTitle: "Comment obtenir une clé Gemini ?",
+    geminiHelpIntro:
+      "La clé est gratuite dans la limite du quota Google AI Studio (≈ 15 requêtes/min sur Gemini 2.5 Flash, largement suffisant pour scanner des tickets).",
+    geminiHelpStep1:
+      "Ouvrez Google AI Studio (un compte Google suffit, aucune carte bancaire requise).",
+    geminiHelpStep2:
+      "Cliquez sur « Create API key » puis sélectionnez ou créez un projet Google Cloud.",
+    geminiHelpStep3:
+      "Copiez la clé générée (elle commence par « AIza… »).",
+    geminiHelpStep4:
+      "Collez-la dans le champ « Clé API Gemini » ci-dessus, puis Enregistrer.",
+    geminiHelpOpenStudio: "Ouvrir Google AI Studio",
     about: "À propos",
     version: "Version",
   },
