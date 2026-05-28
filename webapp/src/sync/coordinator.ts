@@ -89,6 +89,15 @@ export async function rememberEventSecret(
     eventKeyB64: base64StdEncode(eventKey),
     bearer,
   });
+  // Auto-register the existing Web Push subscription (if any + opted-in)
+  // so newly-paired events start receiving push fan-out immediately.
+  // Best-effort: failure here must not block the join flow.
+  try {
+    const { registerEventIfPushEnabled } = await import("./webPush");
+    await registerEventIfPushEnabled(eventId, bearer);
+  } catch {
+    // ignore — push registration is non-essential
+  }
 }
 
 async function getEventSecret(

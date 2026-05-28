@@ -1,20 +1,29 @@
 /**
  * Browser-side helpers for the optional Web Push notifications.
  *
- * The model is:
- *   - One `PushSubscription` per browser × origin × SW registration
- *     (the browser hands us back the same one on repeat
- *     `pushManager.subscribe` calls).
- *   - Opt-in is *per event* in the UI: the user might want
- *     notifications for the family trip but not for their D&D group.
- *     We store the boolean in Dexie (`webPushPrefs`) and PUT/DELETE
- *     the subscription to the Worker on a per-event basis.
- *   - The Worker fans out to all subscriptions of an event when ops
- *     come in (`web_push_subscriptions` row keyed by
- *     `(event_id, device_id)`).
- *   - On `pushsubscriptionchange` the SW broadcasts a message; the
- *     main thread re-PUTs the rotated subscription for every event
- *     that was opted in.
+ * Web Push is opt-in **globally** for the webapp (one switch in
+ * Settings). When enabled we:
+ *
+ *   - Request browser permission once.
+ *   - Subscribe with `pushManager.subscribe` once. The endpoint is a
+ *     browser × origin × SW registration singleton — subsequent calls
+ *     hand back the same one.
+ *   - Register the same subscription against every paired event on
+ *     the Worker (`PUT /events/:id/devices/:did/web-push`). The
+ *     Worker's fan-out is keyed by `(event_id, device_id)`; we just
+ *     write one row per event so it knows whom to notify.
+ *   - Auto-register when a new event is joined (hook called from
+ *     `coordinator.rememberEventSecret`).
+ *
+ * When disabled we DELETE every Worker-side registration for this
+ * device, then `unsubscribe()` the browser. Permission stays granted
+ * (browsers don't let us revoke it from JS); turning the switch back
+ * on will re-subscribe silently if the user hasn't blocked it in the
+ * meantime.
+ *
+ * The previous per-event `webPushPrefs` table is no longer read or
+ * written, but the v2 Dexie store stays around for any user who had
+ * opted-in under the old model — its rows simply become inert.
  *
  * Everything in this module is best-effort. A missing VAPID key on
  * the Worker, a denied permission prompt, or an unsupported browser
@@ -29,6 +38,13 @@ import {
   WorkerCloudTransport,
   WorkerTransportError,
 } from "@/core/sync/transport";
+
+export type EnableReason =
+  | "unsupported"
+  | "no_vapid_key"
+  | "permission_denied"
+  | "missing_keys"
+  | "transport_error";
 
 let transportCache: WorkerCloudTransport | null = null;
 let transportBaseUrl = "";
@@ -51,37 +67,23 @@ export function isWebPushSupported(): boolean {
   );
 }
 
-export async function getWebPushPref(eventId: string): Promise<boolean> {
-  const row = await getDb().webPushPrefs.get(eventId);
-  return row?.enabled === 1;
-}
-
 /**
- * Subscribes the browser (if not already), registers the subscription
- * with the Worker for `eventId`, and stores the opt-in. Returns
- * `false` when the flow can't complete (no Web Push support, no VAPID
- * key configured on the Worker, permission denied).
- *
- * `bearer` is the per-event Worker bearer that the caller already has
- * cached in `eventSecrets`. We don't fetch it here because this module
- * sits below the sync coordinator and we want to keep its deps thin.
+ * Subscribes the browser (if not already), then registers the
+ * subscription with the Worker for every event currently paired on
+ * this device. Persists the global opt-in flag in Settings. Returns
+ * `false` (with a `reason`) if the flow can't complete.
  */
-export async function enableWebPushForEvent(
-  eventId: string,
-  bearer: string,
-): Promise<{ enabled: boolean; reason?: string }> {
+export async function enableWebPushGlobally(): Promise<{
+  enabled: boolean;
+  reason?: EnableReason;
+}> {
   if (!isWebPushSupported()) return { enabled: false, reason: "unsupported" };
 
   const transport = await getTransport();
   const vapidPublicKey = await transport.getVapidPublicKey();
-  if (!vapidPublicKey) {
-    return { enabled: false, reason: "no_vapid_key" };
-  }
+  if (!vapidPublicKey) return { enabled: false, reason: "no_vapid_key" };
 
-  // Notification.requestPermission must be called from a user gesture.
-  // We let it throw on Safari < 16.4 (it returns a promise on modern
-  // browsers; the older callback-only form would have rejected the
-  // chain earlier in the support check).
+  // Must be called from a user gesture on most browsers.
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     return { enabled: false, reason: "permission_denied" };
@@ -92,60 +94,74 @@ export async function enableWebPushForEvent(
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64UrlToBytes(vapidPublicKey).buffer as ArrayBuffer,
+      applicationServerKey: base64UrlToBytes(vapidPublicKey)
+        .buffer as ArrayBuffer,
     });
   }
 
   const serialized = serializeSubscription(sub);
   if (!serialized) {
-    // Browser returned a subscription with no keys — extremely rare
-    // and we can't push to it. Drop and report failure.
     await sub.unsubscribe().catch(() => undefined);
     return { enabled: false, reason: "missing_keys" };
   }
 
-  const deviceId = await getOrCreateDeviceId();
-  await transport.putWebPushSubscription(eventId, deviceId, bearer, serialized);
+  // Persist the opt-in *before* the fan-out so a partial registration
+  // failure still leaves us in a state where future events get
+  // auto-registered by `registerEventIfPushEnabled`.
+  await Settings.setPushNotificationsEnabled(true);
 
-  await getDb().webPushPrefs.put({ eventId, enabled: 1 });
+  await registerSubscriptionForAllEvents(serialized);
   return { enabled: true };
 }
 
 /**
- * Tells the Worker to stop pushing for `eventId` and clears the local
- * opt-in flag. We do NOT call `subscription.unsubscribe()` here
- * because the same browser-level subscription may still be active for
- * other events.
+ * Clears the opt-in, drops every Worker-side registration for this
+ * device, and tears down the browser subscription. We unsubscribe the
+ * browser because — unlike the per-event model — there is no longer a
+ * reason to keep the subscription alive.
  */
-export async function disableWebPushForEvent(
-  eventId: string,
-  bearer: string,
-): Promise<void> {
-  await getDb().webPushPrefs.put({ eventId, enabled: 0 });
+export async function disableWebPushGlobally(): Promise<void> {
+  await Settings.setPushNotificationsEnabled(false);
   if (!isWebPushSupported()) return;
+
   const transport = await getTransport();
   const deviceId = await getOrCreateDeviceId();
+  const secrets = await getDb().eventSecrets.toArray();
+  for (const row of secrets) {
+    try {
+      await transport.deleteWebPushSubscription(
+        row.eventId,
+        deviceId,
+        row.bearer,
+      );
+    } catch (e) {
+      // Best-effort: a stale bearer or 404 must not abort the loop.
+      if (!(e instanceof WorkerTransportError)) throw e;
+    }
+  }
+
   try {
-    await transport.deleteWebPushSubscription(eventId, deviceId, bearer);
-  } catch (e) {
-    // Worker-side cleanup is best-effort; the local opt-out is what
-    // matters most so the UI immediately reflects the new state.
-    if (!(e instanceof WorkerTransportError)) throw e;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+  } catch {
+    // Browser-side unsubscribe is best-effort; the Settings flag is
+    // what gates re-registration on the next event join.
   }
 }
 
 /**
- * Re-PUTs the (possibly rotated) subscription for every event the
- * user has opted-in to. Called by the SW-bridge listener when the
- * browser fires `pushsubscriptionchange`.
+ * Hook called from `coordinator.rememberEventSecret` whenever an
+ * event secret is persisted (initial join or re-import). If global
+ * push is enabled and a subscription exists, idempotently PUTs it on
+ * the Worker for that event. No-op otherwise.
  */
-export async function reRegisterAllEnabledEvents(): Promise<void> {
+export async function registerEventIfPushEnabled(
+  eventId: string,
+  bearer: string,
+): Promise<void> {
   if (!isWebPushSupported()) return;
-  const enabled = await getDb()
-    .webPushPrefs.where("enabled")
-    .equals(1)
-    .toArray();
-  if (enabled.length === 0) return;
+  if (!(await Settings.getPushNotificationsEnabled())) return;
 
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
@@ -155,19 +171,56 @@ export async function reRegisterAllEnabledEvents(): Promise<void> {
 
   const transport = await getTransport();
   const deviceId = await getOrCreateDeviceId();
-  for (const pref of enabled) {
-    const secret = await getDb().eventSecrets.get(pref.eventId);
-    if (!secret) continue;
+  try {
+    await transport.putWebPushSubscription(
+      eventId,
+      deviceId,
+      bearer,
+      serialized,
+    );
+  } catch (e) {
+    if (!(e instanceof WorkerTransportError)) throw e;
+  }
+}
+
+/**
+ * Re-PUTs the (possibly rotated) subscription for every paired event.
+ * Called by the SW-bridge listener when the browser fires
+ * `pushsubscriptionchange`, and reused internally by
+ * `enableWebPushGlobally` to fan out the first registration.
+ */
+export async function reRegisterAllIfEnabled(): Promise<void> {
+  if (!isWebPushSupported()) return;
+  if (!(await Settings.getPushNotificationsEnabled())) return;
+
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  const serialized = serializeSubscription(sub);
+  if (!serialized) return;
+
+  await registerSubscriptionForAllEvents(serialized);
+}
+
+async function registerSubscriptionForAllEvents(serialized: {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}): Promise<void> {
+  const transport = await getTransport();
+  const deviceId = await getOrCreateDeviceId();
+  const secrets = await getDb().eventSecrets.toArray();
+  for (const row of secrets) {
     try {
       await transport.putWebPushSubscription(
-        pref.eventId,
+        row.eventId,
         deviceId,
-        secret.bearer,
+        row.bearer,
         serialized,
       );
     } catch {
       // Swallow per-event errors so a single bad bearer doesn't abort
-      // the loop. The next manual toggle will retry.
+      // the loop. The next focus-driven re-register will retry.
     }
   }
 }

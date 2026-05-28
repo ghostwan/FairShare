@@ -25,6 +25,11 @@ import {
   decodeGeminiKey,
   isGeminiKeyUrl,
 } from "@/core/settings/geminiKeyCodec";
+import {
+  disableWebPushGlobally,
+  enableWebPushGlobally,
+  isWebPushSupported,
+} from "@/sync/webPush";
 
 const VERSION = "0.1.0";
 
@@ -190,6 +195,8 @@ export function SettingsScreen() {
         label={fr.settings.autoRefresh}
       />
 
+      <PushNotificationsToggle />
+
       <Button variant="contained" onClick={save}>
         {fr.settings.save}
       </Button>
@@ -229,6 +236,84 @@ export function SettingsScreen() {
           {importMsg?.text}
         </Alert>
       </Snackbar>
+    </Stack>
+  );
+}
+
+/**
+ * Global toggle for Web Push notifications. One subscription per
+ * browser fans out across every paired event via the Worker; new
+ * events auto-register on join.
+ */
+function PushNotificationsToggle() {
+  const supported = isWebPushSupported();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Settings.getPushNotificationsEnabled().then((v) => {
+      if (!cancelled) setEnabled(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (next) {
+        const res = await enableWebPushGlobally();
+        if (!res.enabled) {
+          if (res.reason === "permission_denied") {
+            setError(fr.settings.pushPermissionDenied);
+          } else if (res.reason === "no_vapid_key") {
+            setError(fr.settings.pushUnavailable);
+          } else if (res.reason === "unsupported") {
+            setError(fr.settings.pushUnsupported);
+          } else {
+            setError(fr.settings.pushUnavailable);
+          }
+          setEnabled(false);
+          return;
+        }
+        setEnabled(true);
+      } else {
+        await disableWebPushGlobally();
+        setEnabled(false);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={1}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={enabled === true}
+            disabled={!supported || busy || enabled === null}
+            onChange={(_, v) => void toggle(v)}
+          />
+        }
+        label={
+          <Stack>
+            <Typography>{fr.settings.pushEnable}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {fr.settings.pushEnableDescription}
+            </Typography>
+          </Stack>
+        }
+      />
+      {!supported && (
+        <Alert severity="info">{fr.settings.pushUnsupported}</Alert>
+      )}
+      {error && <Alert severity="warning">{error}</Alert>}
     </Stack>
   );
 }

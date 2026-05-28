@@ -12,6 +12,7 @@ const KEYS = {
   geminiModel: "gemini.model",
   autoRefreshOnFocus: "sync.autoRefreshOnFocus",
   pollIntervalMs: "sync.pollIntervalMs",
+  pushNotificationsEnabled: "push.enabled",
   // Identity-style fields could grow here later (display name, etc.).
 } as const;
 
@@ -21,6 +22,7 @@ export const DEFAULTS = {
   geminiModel: "gemini-2.5-flash",
   autoRefreshOnFocus: "true",
   pollIntervalMs: "0", // 0 disables active polling; visibility-driven only.
+  pushNotificationsEnabled: "false",
 };
 
 async function readKey(key: string, fallback: string): Promise<string> {
@@ -57,5 +59,15 @@ export const Settings = {
   },
   setAutoRefreshOnFocus(value: boolean): Promise<void> {
     return writeKey(KEYS.autoRefreshOnFocus, value ? "true" : "false");
+  },
+  async getPushNotificationsEnabled(): Promise<boolean> {
+    const raw = await readKey(
+      KEYS.pushNotificationsEnabled,
+      DEFAULTS.pushNotificationsEnabled,
+    );
+    return raw === "true";
+  },
+  setPushNotificationsEnabled(value: boolean): Promise<void> {
+    return writeKey(KEYS.pushNotificationsEnabled, value ? "true" : "false");
   },
 };

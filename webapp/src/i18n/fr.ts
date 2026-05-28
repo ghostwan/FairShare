@@ -47,17 +47,6 @@ export const fr = {
   eventSettings: {
     title: "Réglages de l'événement",
     categoriesSection: "Catégories",
-    notificationsSection: "Notifications",
-    pushEnable: "Notifications push",
-    pushEnableDescription:
-      "Recevoir une notification quand une autre personne ajoute ou modifie une dépense.",
-    pushUnsupported:
-      "Ton navigateur ne gère pas les notifications push (Safari iOS < 16.4 par exemple). Tu peux toujours rafraîchir manuellement.",
-    pushPermissionDenied:
-      "Tu as refusé la permission de notifications. Active-la dans les réglages du navigateur, puis ré-essaie.",
-    pushUnavailable:
-      "Les notifications push ne sont pas activées côté serveur pour cette instance.",
-    pushSubscribing: "Activation…",
   },
   expenses: {
     empty: "Aucune dépense.",
@@ -119,6 +108,15 @@ export const fr = {
     geminiKeyHint: "Optionnel — débloque le scan de tickets via IA",
     geminiModel: "Modèle Gemini",
     autoRefresh: "Synchro automatique au retour sur l'app",
+    pushEnable: "Notifications push",
+    pushEnableDescription:
+      "Recevoir une notification quand une autre personne ajoute ou modifie une dépense, dans tous tes événements.",
+    pushUnsupported:
+      "Ton navigateur ne gère pas les notifications push (Safari iOS < 16.4 par exemple). Tu peux toujours rafraîchir manuellement.",
+    pushPermissionDenied:
+      "Tu as refusé la permission de notifications. Active-la dans les réglages du navigateur, puis ré-essaie.",
+    pushUnavailable:
+      "Les notifications push ne sont pas activées côté serveur pour cette instance.",
     install: "Installer sur l'écran d'accueil",
     installHint:
       "Sur iPhone/iPad, ouvrez le menu Partager dans Safari puis « Sur l'écran d'accueil ».",

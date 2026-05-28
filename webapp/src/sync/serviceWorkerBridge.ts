@@ -21,7 +21,7 @@
  */
 
 import { syncNow } from "./coordinator";
-import { reRegisterAllEnabledEvents } from "./webPush";
+import { reRegisterAllIfEnabled } from "./webPush";
 
 interface PushMessage {
   type: "fairshare/push";
@@ -82,7 +82,7 @@ async function handleMessage(msg: IncomingMessage): Promise<void> {
     }
     case "fairshare/subscription-changed": {
       try {
-        await reRegisterAllEnabledEvents();
+        await reRegisterAllIfEnabled();
       } catch {
         // No-op: next user-initiated toggle will recover.
       }
