@@ -142,16 +142,10 @@ async function sendOne(
  * 401 from the push service on the first send).
  */
 async function importVapidPrivateKey(privateKeyB64Url: string): Promise<CryptoKey> {
-    const d = base64UrlDecodeBytes(privateKeyB64Url);
-    if (d.length !== 32) {
-        throw new Error(`vapid_bad_private_key_len=${d.length}`);
-    }
-    // The webcrypto JWK importer for ECDSA requires x and y. We can
-    // recover them from the configured public key — but to keep this
-    // module pure we instead derive the JWK on the caller's side. The
-    // simplest contract: caller hands us `privateKey` containing the
-    // full JWK as base64url(JSON). We support both legacy raw-d and
-    // JWK-JSON.
+    // Try the supported format first (base64url of the full JWK JSON
+    // — the only one webcrypto can import without us having to recover
+    // x/y from the scalar). The legacy raw-32-byte format is rejected
+    // with a clear error to nudge ops toward `generate-vapid.mjs`.
     const maybeJwk = tryParseJwk(privateKeyB64Url);
     if (maybeJwk) {
         return crypto.subtle.importKey(
@@ -162,10 +156,15 @@ async function importVapidPrivateKey(privateKeyB64Url: string): Promise<CryptoKe
             ["sign"],
         );
     }
-    throw new Error(
-        "vapid_private_key_format: expected JWK JSON (base64url-encoded) — " +
-        "raw scalars cannot be imported without x/y components",
-    );
+    const d = base64UrlDecodeBytes(privateKeyB64Url);
+    if (d.length === 32) {
+        throw new Error(
+            "vapid_private_key_format: bare 32-byte scalar received — " +
+            "regenerate with `node worker/scripts/generate-vapid.mjs` which " +
+            "emits a JWK (base64url JSON) instead",
+        );
+    }
+    throw new Error(`vapid_bad_private_key_len=${d.length}`);
 }
 
 function tryParseJwk(b64: string): JsonWebKey | null {
