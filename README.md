@@ -39,6 +39,11 @@ the people who actually consumed it**.
   (toggleable in Settings)
 - **Invite another device** via a QR code (`fairshare://join?...`) that
   carries the encryption key + a signed seed of the current event state
+- **Web companion (PWA)** in `webapp/` — same wire format, same
+  end-to-end encryption, installable on iOS/Android browsers. Parity
+  includes per-category Stats, receipt assignment, settle-from-balances,
+  archive, and opt-in Web Push notifications (silent push triggers a
+  background sync without a visible banner when the tab is focused)
 
 ## Architecture
 
@@ -93,6 +98,12 @@ HMAC signature. The joining device scans it, accepts the join, and
 both devices stay in sync going forward via the Worker. Foreground
 screens poll every 10 s by default; this can be disabled in Settings
 for users who prefer manual pull-to-refresh.
+
+Push delivery (FCM for Android, Web Push / VAPID for the PWA) is
+handled by the same Worker and fan-outs to every paired device on each
+accepted op batch, so foreground screens get the update in seconds
+without polling. See `webapp/README.md` and `worker/README.md` for the
+companion clients.
 
 
 

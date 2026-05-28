@@ -16,8 +16,11 @@ Apple's developer tax.
 - MUI v6 (Material 3 visual parity with the Android client)
 - Dexie 4 (IndexedDB) for local persistence
 - Web Crypto (HKDF + AES-GCM + HMAC-SHA256) for the sync envelope
-- vite-plugin-pwa (Workbox) for installability + offline shell
-- Vitest (unit + cross-format) + Playwright (Chromium + WebKit E2E)
+- vite-plugin-pwa in `injectManifest` mode + a custom service worker
+  (`src/sw.ts`) handling precache, Web Push notifications, and a
+  SW→main bridge that triggers background syncs
+- Vitest (unit + cross-format, ~64 tests) + Playwright (Chromium +
+  WebKit + iOS Safari E2E)
 - Deployed on Cloudflare Pages (`fairshare-web.pages.dev`)
 
 ## Wire-format compatibility
@@ -50,12 +53,34 @@ npm run deploy               # wrangler pages deploy
 src/
 ├── core/            # pure logic, no React, no DOM beyond Web Crypto
 │   ├── crypto/      # HKDF, AES-GCM, bearer derivation
+│   ├── domain/      # models + per-category stats aggregation
 │   ├── invitation/  # codec for fairshare://join + https://…/join
 │   └── sync/        # operations, lamport, materializer, transport
-├── data/            # Dexie schemas + repositories
-├── domain/          # models, default categories
-└── presentation/    # MUI screens + components
+├── data/            # Dexie schemas (v2: webPushPrefs) + repositories
+├── domain/          # default categories
+├── sync/            # browser-side coordinator, webPush, SW bridge
+├── sw.ts            # custom service worker (precache + push handler)
+└── presentation/    # MUI screens + components (incl. StatsScreen)
 tests/
-├── e2e/             # Playwright
+├── e2e/             # Playwright (chromium / webkit / ios-safari)
 └── unit/            # cross-cutting tests (most live alongside src)
 ```
+
+## Web Push notifications
+
+Opt-in per event from the Event settings screen. Flow:
+
+1. Webapp fetches the Worker's public VAPID key (`GET /web-push/key`).
+2. `PushManager.subscribe` produces `{ endpoint, p256dh, auth }`,
+   pushed to the Worker via `PUT /events/:id/devices/:did/web-push`.
+3. On every accepted op batch the Worker encrypts an empty payload per
+   RFC 8291 (`aes128gcm`), signs a VAPID JWT (ES256), and POSTs it to
+   each subscriber's endpoint.
+4. `src/sw.ts` receives the `push` event. If a FairShare tab is
+   visible it stays silent and just postMessages `fairshare/push` to
+   the page, which triggers `syncNow(eventId)`. Otherwise it shows a
+   minimal notification (Chrome requires a user-visible notification
+   per push, so background tabs always get one).
+5. `pushsubscriptionchange` re-subscribes and re-registers
+   transparently. The opt-in state is persisted in Dexie
+   (`webPushPrefs` table) so a reload restores the subscription.
