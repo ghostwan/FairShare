@@ -64,6 +64,12 @@ export interface SettingsRow {
   value: string;
 }
 
+export interface WebPushPrefRow {
+  eventId: string;
+  /** 1 when the user has opted-in to receive web push notifications. */
+  enabled: 0 | 1;
+}
+
 export class FairShareDb extends Dexie {
   identity!: EntityTable<IdentityRow, "id">;
   eventSecrets!: EntityTable<EventSecretRow, "eventId">;
@@ -74,6 +80,7 @@ export class FairShareDb extends Dexie {
   opLog!: EntityTable<OpLogRow, "opId">;
   opCursor!: EntityTable<OpCursorRow, "eventId">;
   settings!: EntityTable<SettingsRow, "key">;
+  webPushPrefs!: EntityTable<WebPushPrefRow, "eventId">;
 
   constructor(name = "fairshare") {
     super(name);
@@ -89,6 +96,11 @@ export class FairShareDb extends Dexie {
       opLog: "opId, eventId, lamport, pendingPush, [eventId+lamport]",
       opCursor: "eventId",
       settings: "key",
+    });
+    // v2: per-event web-push opt-in. Dexie reuses the existing data
+    // and just creates the new object store on upgrade.
+    this.version(2).stores({
+      webPushPrefs: "eventId, enabled",
     });
   }
 }

@@ -17,7 +17,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // injectManifest: we own the SW source (`src/sw.ts`) so we can
+      // add a `push` event handler on top of the precache + offline
+      // fallback that workbox normally generates for us. The plugin
+      // injects `self.__WB_MANIFEST` at build time and we hand it to
+      // `precacheAndRoute` ourselves.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
+      injectRegister: "auto",
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "FairShare",
@@ -50,16 +59,15 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        // Worker payloads are dynamic and tiny; only precache the static
-        // shell. Operations are pulled via fetch and intentionally not
-        // cached (they're already persisted in IndexedDB anyway).
+      injectManifest: {
+        // Only precache the static shell. Operations are pulled via
+        // fetch and intentionally not cached (they're already
+        // persisted in IndexedDB anyway).
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/health$/],
       },
       devOptions: {
         enabled: false, // turn on temporarily when iterating on SW
+        type: "module",
       },
     }),
   ],

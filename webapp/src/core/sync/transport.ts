@@ -153,6 +153,79 @@ export class WorkerCloudTransport {
     );
   }
 
+  /**
+   * Registers a Web Push subscription so the Worker can wake this
+   * browser via VAPID + aes128gcm whenever someone else writes to the
+   * event. We send the three pieces verbatim — endpoint URL, P-256
+   * user-agent public key, and 16-byte auth secret — all base64url
+   * encoded, exactly as `PushSubscription.toJSON()` returns them.
+   */
+  async putWebPushSubscription(
+    eventId: string,
+    deviceId: string,
+    bearer: string,
+    subscription: { endpoint: string; p256dh: string; auth: string },
+  ): Promise<void> {
+    await this.exec(
+      `${this.baseUrl}/events/${eventId}/devices/${deviceId}/web-push`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${bearer}`,
+          "content-type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify(subscription),
+      },
+    );
+  }
+
+  async deleteWebPushSubscription(
+    eventId: string,
+    deviceId: string,
+    bearer: string,
+  ): Promise<void> {
+    await this.exec(
+      `${this.baseUrl}/events/${eventId}/devices/${deviceId}/web-push`,
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${bearer}` },
+      },
+    );
+  }
+
+  /**
+   * Fetches the Worker's VAPID public key (base64url, 65-byte
+   * uncompressed P-256 point). The webapp passes this to
+   * `pushManager.subscribe({ applicationServerKey })`. The endpoint
+   * is unauthenticated by design: VAPID public keys are public.
+   * Returns `null` when the Worker is not configured for Web Push
+   * (HTTP 404 web_push_not_configured) so callers can degrade
+   * gracefully instead of throwing.
+   */
+  async getVapidPublicKey(): Promise<string | null> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/web-push/key`, {
+        method: "GET",
+      });
+    } catch (e) {
+      throw new WorkerTransportError(
+        `network error fetching VAPID key: ${(e as Error).message}`,
+      );
+    }
+    if (response.status === 404) return null;
+    const text = await response.text();
+    if (!response.ok) {
+      throw new WorkerTransportError(
+        `HTTP ${response.status} for VAPID key: ${text.slice(0, 200)}`,
+        response.status,
+      );
+    }
+    const parsed = safeParse(text, "vapid");
+    const key = typeof parsed.publicKey === "string" ? parsed.publicKey : null;
+    return key;
+  }
+
   private async exec(url: string, init: RequestInit): Promise<string> {
     let response: Response;
     try {
