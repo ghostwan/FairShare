@@ -38,6 +38,13 @@ data class AddExpenseState(
     val dateMillis: Long = System.currentTimeMillis(),
     /** Selected category id (`default.*` or a custom UUID). Null = uncategorized. */
     val categoryId: String? = null,
+    /**
+     * When true, the expense represents a manual reimbursement between
+     * two participants rather than a real shared spend. The timeline
+     * card swaps to a `SwapHoriz` icon + "Remboursement" subtitle.
+     * Mirrors the web `AddExpenseScreen` toggle.
+     */
+    val isSettlement: Boolean = false,
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val isEditMode: Boolean = false,
@@ -88,6 +95,7 @@ class AddExpenseViewModel @Inject constructor(
                             selectedIds = expense.shares.map { s -> s.participantId }.toSet(),
                             dateMillis = expense.date,
                             categoryId = expense.categoryId,
+                            isSettlement = expense.isSettlement,
                             isLoading = false,
                         )
                     }
@@ -104,6 +112,7 @@ class AddExpenseViewModel @Inject constructor(
     fun setMode(m: SplitMode) = _state.update { it.copy(mode = m) }
     fun setDate(millis: Long) = _state.update { it.copy(dateMillis = millis) }
     fun setCategory(id: String?) = _state.update { it.copy(categoryId = id) }
+    fun setSettlement(v: Boolean) = _state.update { it.copy(isSettlement = v) }
 
     /**
      * Creates a new custom category for the current event and selects
@@ -145,6 +154,7 @@ class AddExpenseViewModel @Inject constructor(
                     date = s.dateMillis,
                     shares = shares,
                     categoryId = s.categoryId,
+                    isSettlement = s.isSettlement,
                 )
                 if (editingExpenseId != null) expenseRepository.update(expense)
                 else expenseRepository.add(expense)

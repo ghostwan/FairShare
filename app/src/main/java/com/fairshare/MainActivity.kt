@@ -48,6 +48,12 @@ class MainActivity : ComponentActivity() {
 
     private fun Intent?.extractFairshareLink(): String? {
         val data = this?.dataString ?: return null
-        return data.takeIf { it.startsWith("fairshare://join?") }
+        // Accept both the legacy custom scheme and the https mirror
+        // emitted by the webapp QR generator. The codec itself parses
+        // either form, so we just gate the routing here.
+        return data.takeIf {
+            it.startsWith("fairshare://join?") ||
+                Regex("^https?://[^/?#]+/join\\?").containsMatchIn(it)
+        }
     }
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FairShare maskable icon. Full-bleed green background — the OS adds
+  its own shape mask (circle / squircle / rounded square). Foreground
+  vector stays inside the 10%–90% safe zone so nothing important gets
+  clipped, even by the most aggressive launcher masks.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <rect width="108" height="108" fill="#1976D2"/>
+  <path fill="#FFFFFF" d="M54,28 a26,26 0 1 0 0,52 a26,26 0 1 0 0,-52 Z"/>
+  <path fill="#1976D2" d="M36,72 L70,38 L72,40 L38,74 Z"/>
+  <path fill="#1976D2" d="M40,48 L52,48 L52,50.5 L40,50.5 Z"/>
+  <path fill="#1976D2" d="M40,52.5 L52,52.5 L52,55 L40,55 Z"/>
+  <path fill="#1976D2" d="M56,53 L68,53 L68,55.5 L56,55.5 Z"/>
+  <path fill="#1976D2" d="M56,57.5 L68,57.5 L68,60 L56,60 Z"/>
+  <path fill="#FFFFFF" d="M82,24 L82,34 L78,34 L78,28 L72,28 L72,24 Z"/>
+  <path fill="#FFFFFF" d="M26,84 L26,74 L30,74 L30,80 L36,80 L36,84 Z"/>
+</svg>

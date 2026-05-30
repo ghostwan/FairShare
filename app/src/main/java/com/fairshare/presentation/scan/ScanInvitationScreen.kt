@@ -61,6 +61,29 @@ fun ScanInvitationScreen(
     onBack: () -> Unit,
     onScanned: (String) -> Unit,
 ) {
+    ScanQrScreen(
+        title = "Scanner un QR code",
+        accept = { isFairshareInvitation(it) },
+        onBack = onBack,
+        onScanned = onScanned,
+    )
+}
+
+/**
+ * Generic camera + ML Kit barcode scanner reused by every screen that
+ * needs to capture a typed QR payload (invitations, Gemini key
+ * sharing, future flows). The [accept] predicate filters out QR codes
+ * that don't match the expected format so a stray Wi-Fi or vCard QR
+ * doesn't get fed to the caller.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScanQrScreen(
+    title: String,
+    accept: (String) -> Boolean,
+    onBack: () -> Unit,
+    onScanned: (String) -> Unit,
+) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -79,7 +102,7 @@ fun ScanInvitationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scanner un QR code") },
+                title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -90,7 +113,7 @@ fun ScanInvitationScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             if (hasPermission) {
-                CameraScanner(onScanned = onScanned)
+                CameraScanner(accept = accept, onScanned = onScanned)
             } else {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -117,7 +140,10 @@ fun ScanInvitationScreen(
 }
 
 @Composable
-private fun CameraScanner(onScanned: (String) -> Unit) {
+private fun CameraScanner(
+    accept: (String) -> Boolean,
+    onScanned: (String) -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -155,7 +181,7 @@ private fun CameraScanner(onScanned: (String) -> Unit) {
                     .setTargetResolution(Size(1280, 720))
                     .build()
                 analyzer.setAnalyzer(executor) { proxy ->
-                    processFrame(proxy, scanner, dispatched, onScanned)
+                    processFrame(proxy, scanner, dispatched, accept, onScanned)
                 }
                 try {
                     provider.unbindAll()
@@ -178,6 +204,7 @@ private fun processFrame(
     proxy: ImageProxy,
     scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
     dispatched: java.util.concurrent.atomic.AtomicBoolean,
+    accept: (String) -> Boolean,
     onScanned: (String) -> Unit,
 ) {
     val media = proxy.image
@@ -197,7 +224,7 @@ private fun processFrame(
             }
             val url = barcodes
                 .mapNotNull { it.rawValue }
-                .firstOrNull { it.startsWith("fairshare://") }
+                .firstOrNull(accept)
             if (url != null && dispatched.compareAndSet(false, true)) {
                 Log.i(TAG, "Dispatching scanned URL (len=${url.length})")
                 onScanned(url)
@@ -206,5 +233,23 @@ private fun processFrame(
         .addOnFailureListener { e -> Log.w(TAG, "Barcode scan failed", e) }
         .addOnCompleteListener { proxy.close() }
 }
+
+/**
+ * Recognises both invitation URL flavours we emit (DESIGN.md §7):
+ *
+ *   - `fairshare://join?…` (legacy custom scheme, in-app deep link)
+ *   - `https://<any-host>/join?…` (default since the webapp shipped,
+ *     so iOS Camera and Android Lens open it natively)
+ *
+ * The actual host is intentionally not pinned — staging deployments
+ * (`*.pages.dev` previews) and self-hosted mirrors must work without
+ * a code change. The codec then validates the query params.
+ */
+private fun isFairshareInvitation(raw: String): Boolean {
+    if (raw.startsWith("fairshare://join?")) return true
+    return INVITATION_HTTPS_REGEX.containsMatchIn(raw)
+}
+
+private val INVITATION_HTTPS_REGEX = Regex("^https?://[^/?#]+/join\\?")
 
 private const val TAG = "ScanInvitation"

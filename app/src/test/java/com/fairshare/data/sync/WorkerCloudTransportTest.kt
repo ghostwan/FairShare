@@ -139,5 +139,7 @@ class WorkerCloudTransportTest {
         override suspend fun setGeminiApiKey(value: String) = error("unused")
         override val geminiModel: Flow<String> get() = error("unused")
         override suspend fun setGeminiModel(value: String) = error("unused")
+        override val alwaysUseGemini: Flow<Boolean> get() = error("unused")
+        override suspend fun setAlwaysUseGemini(value: Boolean) = error("unused")
     }
 }

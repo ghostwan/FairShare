@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -25,7 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -35,6 +39,7 @@ import com.fairshare.domain.model.DefaultCategories
 import com.fairshare.presentation.common.centsToString
 import com.fairshare.presentation.common.toDayHeaderLabel
 import com.fairshare.presentation.common.toStartOfDay
+import com.fairshare.presentation.theme.FairShareTheme
 import kotlinx.coroutines.launch
 
 private enum class Tab(val label: String) {
@@ -52,6 +57,7 @@ fun EventDetailScreen(
     onEditExpense: (eventId: String, expenseId: String) -> Unit,
     onScanReceipt: (String) -> Unit,
     onInvite: (String) -> Unit,
+    onOpenEventSettings: (String) -> Unit,
     vm: EventDetailViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
@@ -83,6 +89,12 @@ fun EventDetailScreen(
                     }
                     IconButton(onClick = { onInvite(vm.eventId) }) {
                         Icon(Icons.Default.GroupAdd, contentDescription = "Inviter")
+                    }
+                    IconButton(
+                        onClick = { onOpenEventSettings(vm.eventId) },
+                        enabled = state.event != null,
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Réglages de l'événement")
                     }
                 },
             )
@@ -297,6 +309,7 @@ private fun BalancesList(
         }
         items(state.balances, key = { it.participantId }) { b ->
             val isPositive = b.netCents >= 0
+            val semantic = FairShareTheme.semanticColors
             ListItem(
                 headlineContent = { Text(b.participantName) },
                 supportingContent = {
@@ -305,7 +318,7 @@ private fun BalancesList(
                 trailingContent = {
                     Text(
                         (if (isPositive) "+" else "") + b.netCents.centsToString(currency),
-                        color = if (isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        color = if (isPositive) semantic.credit else semantic.debt,
                         fontWeight = FontWeight.SemiBold,
                     )
                 },
@@ -317,6 +330,7 @@ private fun BalancesList(
                 Text("Pour solder", style = MaterialTheme.typography.titleMedium)
             }
             items(state.settlements) { s ->
+                val semantic = FairShareTheme.semanticColors
                 // Custom Card layout instead of ListItem because the
                 // "Remboursé" TextButton in trailingContent overflowed
                 // on narrow phones and overlapped the price line.
@@ -324,13 +338,22 @@ private fun BalancesList(
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "${s.fromName} → ${s.toName}",
+                                buildAnnotatedString {
+                                    withStyle(SpanStyle(color = semantic.debt)) {
+                                        append(s.fromName)
+                                    }
+                                    append(" → ")
+                                    withStyle(SpanStyle(color = semantic.credit)) {
+                                        append(s.toName)
+                                    }
+                                },
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
                                 s.amountCents.centsToString(currency),
                                 style = MaterialTheme.typography.titleMedium,
+                                color = semantic.debt,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }

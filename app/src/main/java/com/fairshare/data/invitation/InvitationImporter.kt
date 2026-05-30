@@ -3,100 +3,101 @@ package com.fairshare.data.invitation
 import android.util.Log
 import com.fairshare.data.local.dao.EventDao
 import com.fairshare.data.local.entity.EventEntity
-import com.fairshare.data.sync.OperationApplier
 import com.fairshare.data.sync.PushTokenRegistrar
-import com.fairshare.domain.model.sync.OpOrigin
-import com.fairshare.domain.model.sync.OpPayload
-import com.fairshare.domain.model.sync.Operation
+import com.fairshare.data.sync.SyncCoordinator
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Inbound counterpart of [InvitationExporter].
  *
- * Handles `fairshare://join` URLs: decodes the bundle, persists the
- * [EventEntity] with the embedded encryption key, then materializes
- * the seed ops through [OperationApplier]. The applier is idempotent
- * on opId so re-applying the same invitation is harmless.
+ * Handles `fairshare://join` (or `https://…/join`) URLs: decodes the
+ * `event + key` bundle, persists an empty placeholder [EventEntity]
+ * with the embedded encryption key, registers for FCM push on that
+ * event, then kicks a [SyncCoordinator.syncEvent] cycle. The first
+ * pull retrieves the whole op log from the Worker; the materializer
+ * overwrites the placeholder name / currency / createdAt while
+ * preserving the encryption key.
  *
- * Ops are applied with origin [OpOrigin.LOCAL] so the regular push
- * pass forwards them to the Cloudflare Worker on the next sync; the
- * Worker dedupes by opId. After the first successful round-trip the
- * device behaves identically to one that created the event.
+ * The pull is idempotent on opId so re-importing the same invitation
+ * is harmless. The placeholder row guarantees the event is visible
+ * (with a fallback name) even if the device is offline during the
+ * first sync attempt — the next foreground sync will fill in the
+ * real metadata.
  */
 @Singleton
 class InvitationImporter @Inject constructor(
     private val eventDao: EventDao,
-    private val applier: OperationApplier,
+    private val coordinator: SyncCoordinator,
     private val pushRegistrar: PushTokenRegistrar,
 ) {
     /** Failure modes [preview] / [apply] can hit. */
     sealed interface ImportError {
         data object MalformedUrl : ImportError
         data object MissingFields : ImportError
-        data object SignatureMismatch : ImportError
-        data class PayloadInvalid(val cause: Throwable) : ImportError
     }
 
     /** Result of a successful preview. */
     data class Preview(
         val eventId: String,
+        /** Local name if the event is already known; null on a fresh join. */
         val eventName: String?,
-        val ops: List<Operation>,
     )
 
     /**
      * Decodes [url] and resolves the event metadata without writing
-     * anything. Useful to show a confirmation screen before applying.
+     * anything. The name is null on a fresh join (we only get it once
+     * the first pull has materialized the EventUpsert op).
      */
     suspend fun preview(url: String): Result<Preview> {
         val decoded = InvitationCodec.decode(url)
             .getOrElse { return Result.failure(mapCodecError(it)) }
-        // The user-visible name comes from the seed's EventUpsert if
-        // present, falling back to an existing row (re-applying a
-        // previously-joined invitation).
-        val name = decoded.ops.asSequence()
-            .map { it.payload }
-            .filterIsInstance<OpPayload.EventUpsert>()
-            .firstOrNull()
-            ?.event
-            ?.name
-            ?: eventDao.getById(decoded.eventId)?.name
-        return Result.success(Preview(decoded.eventId, name, decoded.ops))
+        val name = eventDao.getById(decoded.eventId)?.name
+        return Result.success(Preview(decoded.eventId, name))
     }
 
     /**
-     * Persists the event row with its encryption key (so subsequent
-     * materialization runs preserve the key) then applies the seed
-     * ops as LOCAL origin.
+     * Persists a placeholder event row with the embedded encryption
+     * key, registers for FCM push, then runs a sync cycle. The cycle
+     * registers the bearer with the Worker (mandatory push-empty
+     * handshake) and pulls the whole op log.
      */
     suspend fun apply(url: String): Result<Preview> {
-        val preview = preview(url).getOrElse { return Result.failure(it) }
-        val decoded = InvitationCodec.decode(url).getOrThrow()
-        val eventSnap = preview.ops.asSequence()
-            .map { it.payload }
-            .filterIsInstance<OpPayload.EventUpsert>()
-            .firstOrNull()
-            ?.event
-        if (eventSnap != null && eventDao.getById(decoded.eventId) == null) {
+        val decoded = InvitationCodec.decode(url)
+            .getOrElse { return Result.failure(mapCodecError(it)) }
+
+        if (eventDao.getById(decoded.eventId) == null) {
             eventDao.insert(
                 EventEntity(
-                    id = eventSnap.id,
-                    name = eventSnap.name,
-                    description = eventSnap.description,
-                    currency = eventSnap.currency,
-                    createdAt = eventSnap.createdAt,
+                    id = decoded.eventId,
+                    // Placeholder fields — overwritten by the first pull
+                    // which carries the EventUpsert op from the inviter.
+                    name = "…",
+                    description = null,
+                    currency = "EUR",
+                    createdAt = System.currentTimeMillis(),
                     encryptionKey = decoded.eventKey,
                 ),
             )
         }
-        applier.apply(preview.ops, OpOrigin.LOCAL)
-        // Register for FCM pushes on the joined event so subsequent
-        // ops emitted by other paired devices reach us without polling.
+
+        // Register for FCM pushes so subsequent ops emitted by other
+        // paired devices reach us without polling. Best-effort: a
+        // missing token (no Play Services, denied permission) is
+        // logged but not fatal.
         pushRegistrar.register(decoded.eventId).onFailure {
             Log.w("InvitationImporter", "FCM register failed for ${decoded.eventId}: ${it.message}")
         }
-        return Result.success(preview)
+
+        // Push-then-pull: registers the bearer server-side, then
+        // catches up on the full op log. Errors here surface to the
+        // caller so the UI can retry.
+        coordinator.syncEvent(decoded.eventId).onFailure {
+            return Result.failure(it)
+        }
+
+        val finalName = eventDao.getById(decoded.eventId)?.name
+        return Result.success(Preview(decoded.eventId, finalName))
     }
 
     private fun mapCodecError(t: Throwable): ImportException {
@@ -104,10 +105,7 @@ class InvitationImporter @Inject constructor(
         val mapped = when (codecError) {
             InvitationCodec.DecodeError.MalformedUrl -> ImportError.MalformedUrl
             InvitationCodec.DecodeError.MissingFields -> ImportError.MissingFields
-            InvitationCodec.DecodeError.SignatureMismatch -> ImportError.SignatureMismatch
-            is InvitationCodec.DecodeError.PayloadInvalid ->
-                ImportError.PayloadInvalid(codecError.cause)
-            null -> ImportError.PayloadInvalid(t)
+            null -> ImportError.MalformedUrl
         }
         return ImportException(mapped)
     }

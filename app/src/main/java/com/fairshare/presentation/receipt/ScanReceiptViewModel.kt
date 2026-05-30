@@ -120,7 +120,13 @@ class ScanReceiptViewModel @Inject constructor(
         }
     }
 
-    fun scan(uri: Uri) = runParser(uri, mlKitParser)
+    fun scan(uri: Uri) {
+        viewModelScope.launch {
+            val useGemini = settings.alwaysUseGemini.first() &&
+                settings.geminiApiKey.first().isNotBlank()
+            runParser(uri, if (useGemini) geminiParser else mlKitParser)
+        }
+    }
 
     /**
      * Re-runs the parsing pipeline on the last scanned image using the Gemini AI

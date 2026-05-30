@@ -15,6 +15,9 @@ See `app/docs/sync/DESIGN.md` §6.2 and §7 for the full design.
 | GET    | `/events/:id/ops`                                 | `?since=<lamport>` (default 0)                              | `{ ops, nextSince, hasMore }`  |
 | PUT    | `/events/:id/devices/:deviceId/token`             | `{ fcmToken: "<token>" }`                                   | `{ ok: true }`                 |
 | DELETE | `/events/:id/devices/:deviceId/token`             | —                                                           | `{ removed: <n> }`             |
+| PUT    | `/events/:id/devices/:deviceId/web-push`          | `{ endpoint, p256dh, auth }`                                | `{ ok: true }`                 |
+| DELETE | `/events/:id/devices/:deviceId/web-push`          | —                                                           | `{ removed: <n> }`             |
+| GET    | `/web-push/key`                                   | —                                                           | `{ publicKey }` (VAPID, public)|
 | GET    | `/health` or `/`                                  | —                                                           | `fairshare-sync ok`            |
 
 Authentication: `Authorization: Bearer <hex(HMAC-SHA256(eventKey, eventId))>`.
@@ -34,6 +37,30 @@ so paired devices see writes within seconds without polling.
 
 When the secret is absent, fan-out is silently skipped and the app
 falls back to manual / on-resume syncs.
+
+## Web Push fan-out (VAPID)
+
+The webapp PWA registers a Web Push subscription per event via `PUT
+/events/:id/devices/:deviceId/web-push` (table
+`web_push_subscriptions`, migration `0003`). When `VAPID_PRIVATE_KEY`
+is set and `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` are configured in
+`wrangler.toml`, every accepted op batch is fanned out to every
+subscriber for the event (except the senders), using RFC 8291
+`aes128gcm` encryption and an ES256 VAPID JWT. The payload is an
+empty body — the webapp service worker treats the push as a
+"sync now" trigger.
+
+Generate a fresh keypair with:
+
+```bash
+node worker/scripts/generate-vapid.mjs
+# prints VAPID_PUBLIC_KEY (raw base64url) and a JWK (base64url-encoded
+# JSON) ready for `wrangler secret put VAPID_PRIVATE_KEY`.
+```
+
+The webapp fetches the public key at runtime through `GET
+/web-push/key`, so rotating it only requires re-running
+`wrangler secret put` + `wrangler deploy`.
 
 ## Local dev
 
@@ -84,6 +111,13 @@ npx wrangler deploy
 #    Generate new private key. Download the JSON.
 # 2. Upload it as a Worker secret:
 cat /path/to/service-account.json | npx wrangler secret put FCM_SERVICE_ACCOUNT
+
+# Optional: enable Web Push fan-out for the PWA companion.
+# 1. Generate a VAPID keypair:
+node scripts/generate-vapid.mjs
+# 2. Copy VAPID_PUBLIC_KEY + VAPID_SUBJECT into wrangler.toml [vars],
+#    then upload the private JWK as a secret:
+npx wrangler secret put VAPID_PRIVATE_KEY
 ```
 
 The resulting URL is `https://fairshare-sync.<account>.workers.dev`

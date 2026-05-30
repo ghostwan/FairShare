@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -43,14 +45,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onScanGeminiKey: () -> Unit = {},
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val expand by vm.expandQuantities.collectAsState()
     val apiKey by vm.geminiApiKey.collectAsState()
     val model by vm.geminiModel.collectAsState()
+    val alwaysGemini by vm.alwaysUseGemini.collectAsState()
     val cloudUrl by vm.cloudBaseUrl.collectAsState()
     val syncStatus by vm.syncStatus.collectAsState()
     var showKey by remember { mutableStateOf(false) }
+    var showShareKey by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -128,6 +133,49 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            ListItem(
+                headlineContent = { Text("Toujours scanner avec l'IA") },
+                supportingContent = {
+                    Text(
+                        if (alwaysGemini)
+                            "Tous les scans passent directement par Gemini. Plus précis, mais consomme ton quota API à chaque ticket."
+                        else
+                            "OCR local (gratuit, hors-ligne) d'abord. Tape « Réessayer avec IA » si le résultat est mauvais.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = alwaysGemini,
+                        onCheckedChange = vm::setAlwaysUseGemini,
+                        enabled = apiKey.isNotBlank(),
+                    )
+                },
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = { showShareKey = true },
+                    enabled = apiKey.isNotBlank(),
+                ) {
+                    Icon(Icons.Default.QrCode, contentDescription = null)
+                    Text("  Partager via QR")
+                }
+                OutlinedButton(onClick = onScanGeminiKey) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                    Text("  Scanner un QR")
+                }
+            }
+            Text(
+                "Le QR contient ta clé en clair — ne le scanne qu'avec tes propres appareils.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
 
             Text(
                 "Synchronisation cloud",
@@ -181,6 +229,14 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
+    }
+
+    if (showShareKey) {
+        ShareGeminiKeyDialog(
+            apiKey = apiKey,
+            model = model.takeIf { it.isNotBlank() },
+            onDismiss = { showShareKey = false },
+        )
     }
 }
 

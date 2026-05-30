@@ -30,6 +30,18 @@ interface SettingsRepository {
     suspend fun setGeminiModel(value: String)
 
     /**
+     * When `true`, the receipt scan flow skips the local ML Kit OCR pipeline
+     * and goes straight to Gemini. The user can still tap "Réessayer avec IA"
+     * but it's redundant. Defaults to `false` to preserve the offline-first
+     * UX and avoid silently burning the Gemini quota.
+     *
+     * Honored by `ScanReceiptViewModel.scan` — irrelevant when no Gemini
+     * key is configured (the UI hides the toggle in that case).
+     */
+    val alwaysUseGemini: Flow<Boolean>
+    suspend fun setAlwaysUseGemini(value: Boolean)
+
+    /**
      * Base URL of the Cloudflare sync Worker (no trailing slash). Empty
      * string disables the cloud transport. Defaults to the production
      * deployment at `https://fairshare-sync.ghostwan.workers.dev`.
