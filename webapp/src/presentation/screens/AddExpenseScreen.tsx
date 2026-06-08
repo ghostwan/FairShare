@@ -14,6 +14,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { fr } from "@/i18n/fr";
@@ -23,9 +24,9 @@ import type {
   Category,
   Expense,
   ExpenseItem,
-  ExpenseShare,
 } from "@/core/domain/models";
 import { assignReceiptItems } from "@/core/domain/receiptAssign";
+import { splitEqually } from "@/core/domain/split";
 import { argbToCssHex, formatMoneyCents } from "../format";
 import { ReceiptItemsEditor } from "../components/ReceiptItemsEditor";
 
@@ -75,6 +76,9 @@ export function AddExpenseScreen() {
   const [participantsIncluded, setParticipantsIncluded] = useState<Set<string>>(
     new Set(),
   );
+  const [participantsGifted, setParticipantsGifted] = useState<Set<string>>(
+    new Set(),
+  );
   const [date, setDate] = useState<string>(toLocalDateInput(Date.now()));
   const [categoryId, setCategoryId] = useState<string>("");
   const [isSettlement, setIsSettlement] = useState(false);
@@ -91,7 +95,14 @@ export function AddExpenseScreen() {
       setTitle(existing.title);
       setAmountStr((existing.amountCents / 100).toFixed(2).replace(".", ","));
       setPayerId(existing.payerId);
-      setParticipantsIncluded(new Set(existing.shares.map((s) => s.participantId)));
+      const included = new Set<string>();
+      const gifted = new Set<string>();
+      for (const s of existing.shares) {
+        if (s.coveredBy && s.coveredBy.length > 0) gifted.add(s.participantId);
+        else included.add(s.participantId);
+      }
+      setParticipantsIncluded(included);
+      setParticipantsGifted(gifted);
       setDate(toLocalDateInput(existing.date));
       setCategoryId(existing.categoryId ?? "");
       setIsSettlement(existing.isSettlement);
@@ -100,6 +111,7 @@ export function AddExpenseScreen() {
     } else if (participants.length > 0) {
       setPayerId((prev) => prev || participants[0]!.id);
       setParticipantsIncluded(new Set(participants.map((p) => p.id)));
+      setParticipantsGifted(new Set());
       setHydrated(true);
     }
   }, [hydrated, isEdit, existing, participants]);
@@ -122,9 +134,18 @@ export function AddExpenseScreen() {
 
   const submit = async () => {
     if (!valid || amountCents == null) return;
+    // Preserve the participants list order so the cent remainder is
+    // distributed predictably (matches the order they appear in the
+    // UI: alphabetical by name from the parent `participants` query).
+    const orderedIncluded = participants
+      .map((p) => p.id)
+      .filter((id) => participantsIncluded.has(id));
+    const orderedGifted = participants
+      .map((p) => p.id)
+      .filter((id) => participantsGifted.has(id));
     const shares = receiptMode
       ? assignReceiptItems(items, participants.map((p) => p.id))
-      : splitEquallyCents(amountCents, [...participantsIncluded]);
+      : splitEqually(amountCents, orderedIncluded, orderedGifted);
     const exp: Expense = {
       id: existing?.id ?? "",
       eventId,
@@ -229,23 +250,54 @@ export function AddExpenseScreen() {
           <Typography variant="caption" color="text.secondary">
             {fr.expenses.splitEqual}
           </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {fr.expenses.giftHint}
+          </Typography>
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
             {participants.map((p) => {
-              const on = participantsIncluded.has(p.id);
+              const included = participantsIncluded.has(p.id);
+              const gifted = participantsGifted.has(p.id);
+              const state: "off" | "in" | "gift" = gifted
+                ? "gift"
+                : included
+                  ? "in"
+                  : "off";
+              const onClick = () => {
+                // Cycle: off → in → gift → off. The two sets are
+                // kept disjoint by always recomputing both at once.
+                const nextIn = new Set(participantsIncluded);
+                const nextGift = new Set(participantsGifted);
+                if (state === "off") {
+                  nextIn.add(p.id);
+                  nextGift.delete(p.id);
+                } else if (state === "in") {
+                  nextIn.delete(p.id);
+                  nextGift.add(p.id);
+                } else {
+                  nextIn.delete(p.id);
+                  nextGift.delete(p.id);
+                }
+                setParticipantsIncluded(nextIn);
+                setParticipantsGifted(nextGift);
+              };
               return (
                 <Chip
                   key={p.id}
                   label={p.name}
-                  onClick={() => {
-                    setParticipantsIncluded((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(p.id)) next.delete(p.id);
-                      else next.add(p.id);
-                      return next;
-                    });
-                  }}
-                  color={on ? "primary" : "default"}
-                  variant={on ? "filled" : "outlined"}
+                  onClick={onClick}
+                  color={
+                    state === "in"
+                      ? "primary"
+                      : state === "gift"
+                        ? "secondary"
+                        : "default"
+                  }
+                  variant={state === "off" ? "outlined" : "filled"}
+                  icon={
+                    state === "gift" ? (
+                      <CardGiftcardIcon fontSize="small" />
+                    ) : undefined
+                  }
                 />
               );
             })}
@@ -304,20 +356,6 @@ function parseAmountCents(input: string): number | null {
   if (!Number.isFinite(n) || n < 0) return null;
   // Round half-away-from-zero on the cent.
   return Math.round(n * 100);
-}
-
-function splitEquallyCents(total: number, ids: string[]): ExpenseShare[] {
-  if (ids.length === 0) return [];
-  const base = Math.floor(total / ids.length);
-  let remainder = total - base * ids.length;
-  return ids.map((id) => {
-    let amount = base;
-    if (remainder > 0) {
-      amount += 1;
-      remainder -= 1;
-    }
-    return { participantId: id, amountCents: amount };
-  });
 }
 
 /** YYYY-MM-DDTHH:mm in local time for <input type="datetime-local">. */

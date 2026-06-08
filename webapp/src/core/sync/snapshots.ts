@@ -32,6 +32,14 @@ export interface ExpenseShareSnapshot {
   id: string;
   participantId: string;
   amountCents: number;
+  /**
+   * Webapp-only extension: list of participant ids whose own shares
+   * absorb this share's amount (gift semantics). Optional / nullable
+   * to stay backwards compatible with Android peers — they drop the
+   * field via `ignoreUnknownKeys = true` and will round-trip an
+   * empty list back as `coveredBy = null` on the next edit.
+   */
+  coveredBy?: string[] | null;
 }
 
 export interface ExpenseItemSnapshot {

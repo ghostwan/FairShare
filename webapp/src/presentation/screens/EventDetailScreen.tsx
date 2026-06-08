@@ -258,13 +258,22 @@ function ExpensesTab(props: {
     return (
       <Stack spacing={2}>
         <Typography color="text.secondary">{fr.expenses.empty}</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate(`/event/${props.eventId}/expense/new`)}
-        >
-          {fr.expenses.add}
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate(`/event/${props.eventId}/expense/new`)}
+            fullWidth
+          >
+            {fr.expenses.add}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => navigate(`/event/${props.eventId}/receipt`)}
+          >
+            {fr.receipt.scan}
+          </Button>
+        </Stack>
       </Stack>
     );
   }
@@ -294,6 +303,18 @@ function ExpensesTab(props: {
             (e.categoryId && props.categoriesById.get(e.categoryId)) ||
             (e.categoryId &&
               DEFAULT_CATEGORIES.find((c) => c.id === e.categoryId));
+          // Gifted-share annotations: each gifted participant's share
+          // carries the list of payer ids in coveredBy.
+          const giftLines = e.shares
+            .filter((s) => s.coveredBy && s.coveredBy.length > 0)
+            .map((s) => {
+              const giftedName =
+                props.participantsById.get(s.participantId)?.name ?? "?";
+              const payerNames = (s.coveredBy ?? [])
+                .map((id) => props.participantsById.get(id)?.name ?? "?")
+                .join(", ");
+              return `🎁 ${giftedName} (${fr.expenses.giftedBy} ${payerNames})`;
+            });
           return (
             <ListItem
               key={e.id}
@@ -331,7 +352,22 @@ function ExpensesTab(props: {
                       <Typography component="span">{e.title}</Typography>
                     </Stack>
                   }
-                  secondary={`${formatMoneyCents(e.amountCents, props.currency)} — ${payer?.name ?? "?"} · ${formatDate(e.date)}`}
+                  secondary={
+                    <Box component="span">
+                      <Box component="span" sx={{ display: "block" }}>
+                        {`${formatMoneyCents(e.amountCents, props.currency)} — ${payer?.name ?? "?"} · ${formatDate(e.date)}`}
+                      </Box>
+                      {giftLines.map((line, i) => (
+                        <Box
+                          key={i}
+                          component="span"
+                          sx={{ display: "block", color: "secondary.main" }}
+                        >
+                          {line}
+                        </Box>
+                      ))}
+                    </Box>
+                  }
                 />
               </ListItemButton>
             </ListItem>

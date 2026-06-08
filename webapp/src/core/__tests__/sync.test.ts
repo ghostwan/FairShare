@@ -146,7 +146,9 @@ describe("codec.encodeOperation", () => {
           amountCents: 99,
           payerId: "p",
           date: 5,
-          shares: [{ id: "s", participantId: "p", amountCents: 99 }],
+          shares: [
+            { id: "s", participantId: "p", amountCents: 99, coveredBy: null },
+          ],
           items: [
             {
               id: "i",

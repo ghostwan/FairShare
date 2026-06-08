@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  Alert,
   AppBar,
   Box,
   CircularProgress,
   Container,
   IconButton,
+  Snackbar,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -16,6 +18,9 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import { Settings } from "@/data/settings";
 import { getDb } from "@/data/db";
 import { syncNow } from "@/sync/coordinator";
+import { fr } from "@/i18n/fr";
+
+type Toast = { severity: "success" | "info" | "error"; message: string };
 
 /**
  * App-wide shell: top app bar with a contextual back button, a refresh
@@ -30,6 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [syncing, setSyncing] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
 
   const onEvent = location.pathname.startsWith("/event/");
   const eventId = onEvent ? location.pathname.split("/")[2]! : null;
@@ -62,7 +68,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!eventId) return;
     setSyncing(true);
     try {
-      await syncNow(eventId);
+      const r = await syncNow(eventId);
+      if (r.error) {
+        setToast({
+          severity: "error",
+          message: `${fr.sync.error}: ${r.error.message}${r.error.status ? ` (HTTP ${r.error.status})` : ""}`,
+        });
+      } else if (r.pulled === 0 && r.pushed === 0) {
+        setToast({ severity: "success", message: fr.sync.upToDate });
+      } else {
+        setToast({
+          severity: "info",
+          message: formatSyncResult(r.pushed, r.pulled),
+        });
+      }
+    } catch (e) {
+      setToast({
+        severity: "error",
+        message: `${fr.sync.error}: ${(e as Error).message ?? e}`,
+      });
     } finally {
       setSyncing(false);
     }
@@ -148,8 +172,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </Container>
+      <Snackbar
+        open={toast != null}
+        autoHideDuration={4000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        {toast ? (
+          <Alert
+            onClose={() => setToast(null)}
+            severity={toast.severity}
+            variant="filled"
+            sx={{ width: "100%" }}
+          >
+            {toast.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   );
+}
+
+function formatSyncResult(pushed: number, pulled: number): string {
+  const parts: string[] = [];
+  if (pushed > 0) {
+    parts.push(fr.sync.pushedN(pushed));
+  }
+  if (pulled > 0) {
+    parts.push(fr.sync.pulledN(pulled));
+  }
+  if (parts.length === 0) return fr.sync.upToDate;
+  return parts.join(" · ");
 }
 
 function TitleForRoute({ eventId }: { eventId: string | null }) {

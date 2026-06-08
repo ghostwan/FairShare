@@ -29,6 +29,19 @@ export interface Participant {
 export interface ExpenseShare {
   participantId: string;
   amountCents: number;
+  /**
+   * When non-empty, this share's amount has been "offered" by the
+   * listed participant ids — typical use case: someone's part is
+   * covered by the rest of the group for a birthday. `amountCents`
+   * is expected to be 0 in that case; the covering participants
+   * carry the redistributed amount on their own shares.
+   *
+   * Wire-format note: optional, Kotlin peers tolerate the unknown
+   * field thanks to `ignoreUnknownKeys = true`. Re-emitting an
+   * expense from an Android peer will drop the gift annotation
+   * until Android's `ExpenseShareSnapshot` is extended too.
+   */
+  coveredBy?: string[];
 }
 
 export interface ExpenseItem {

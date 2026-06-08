@@ -223,6 +223,13 @@ export async function push(eventId: string): Promise<{ pushed: number }> {
 /**
  * Pull new ops from the Worker, decrypt, persist, advance cursor,
  * materialise. Returns the number of newly-stored ops.
+ *
+ * `rematerialise` is called unconditionally on every successful pull,
+ * even when no new op was downloaded. The cost is negligible at our
+ * scale (a few hundred ops per event), and it serves as a cheap
+ * self-heal for Dexie drifts: any projection table that has been
+ * corrupted offline (e.g. by a deletion that was never propagated)
+ * is recomputed from the op log on the next sync.
  */
 export async function pull(eventId: string): Promise<{ pulled: number }> {
   const db = getDb();
@@ -276,7 +283,11 @@ export async function pull(eventId: string): Promise<{ pulled: number }> {
     await db.opCursor.put(cursor);
     if (!res.hasMore) break;
   }
-  if (pulled > 0) await rematerialise(eventId);
+  // Always re-materialise: cheap, and ensures we recover from any
+  // local projection drift even when the Worker had nothing new for
+  // us. The previous `if (pulled > 0)` guard meant a damaged Dexie
+  // table could stay stale until the next op landed.
+  await rematerialise(eventId);
   return { pulled };
 }
 
@@ -395,6 +406,9 @@ function expenseSnapshotToModel(s: ExpenseSnapshot): Expense {
   const shares: ExpenseShare[] = s.shares.map((x) => ({
     participantId: x.participantId,
     amountCents: x.amountCents,
+    ...(x.coveredBy && x.coveredBy.length > 0
+      ? { coveredBy: [...x.coveredBy] }
+      : {}),
   }));
   const items: ExpenseItem[] = s.items.map((x) => ({
     id: x.id,

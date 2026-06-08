@@ -43,7 +43,12 @@ function encodeParticipantSnapshot(s: ParticipantSnapshot): unknown {
 }
 
 function encodeExpenseShareSnapshot(s: ExpenseShareSnapshot): unknown {
-  return { id: s.id, participantId: s.participantId, amountCents: s.amountCents };
+  return {
+    id: s.id,
+    participantId: s.participantId,
+    amountCents: s.amountCents,
+    coveredBy: s.coveredBy && s.coveredBy.length > 0 ? s.coveredBy : null,
+  };
 }
 
 function encodeExpenseItemSnapshot(s: ExpenseItemSnapshot): unknown {
@@ -184,10 +189,17 @@ function decodeParticipantSnapshot(raw: unknown): ParticipantSnapshot {
 
 function decodeExpenseShareSnapshot(raw: unknown): ExpenseShareSnapshot {
   const o = asObject(raw, "share");
+  const coveredBy =
+    o.coveredBy == null
+      ? null
+      : asArray(o.coveredBy, "share.coveredBy").map((x) =>
+          asString(x, "share.coveredBy[]"),
+        );
   return {
     id: asString(o.id, "share.id"),
     participantId: asString(o.participantId, "share.participantId"),
     amountCents: asNumber(o.amountCents, "share.amountCents"),
+    coveredBy,
   };
 }
 

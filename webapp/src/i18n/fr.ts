@@ -60,6 +60,9 @@ export const fr = {
     categoryNone: "Aucune",
     split: "Répartition",
     splitEqual: "Parts égales",
+    giftHint:
+      "Clique sur un participant : inclus → offert 🎁 → exclu. Les personnes offertes ne paient rien, leur part est absorbée par les inclus.",
+    giftedBy: "offert par",
     save: "Enregistrer",
     delete: "Supprimer",
     confirmDelete: "Supprimer cette dépense ?",
@@ -169,6 +172,14 @@ export const fr = {
     retry: "Réessayer",
     today: "Aujourd'hui",
     yesterday: "Hier",
+  },
+  sync: {
+    upToDate: "Tout est à jour ✓",
+    pushedN: (n: number) =>
+      n === 1 ? "1 modification envoyée" : `${n} modifications envoyées`,
+    pulledN: (n: number) =>
+      n === 1 ? "1 modification reçue" : `${n} modifications reçues`,
+    error: "Synchro impossible",
   },
 } as const;
 

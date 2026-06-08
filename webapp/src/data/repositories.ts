@@ -169,6 +169,8 @@ export async function upsertExpense(expense: Expense): Promise<Expense> {
         id: `${id}-share-${i}`,
         participantId: s.participantId,
         amountCents: s.amountCents,
+        coveredBy:
+          s.coveredBy && s.coveredBy.length > 0 ? [...s.coveredBy] : null,
       })),
       items: expense.items.map((it, i) => ({
         id: it.id || `${id}-item-${i}`,
