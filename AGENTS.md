@@ -37,6 +37,16 @@ repository. Read this in full before doing anything.
    touching the parser should add a regression test.
 6. **Reply in French in chat by default.** The owner is French. Code,
    commits, and docs stay English.
+7. **Bump `webapp/package.json` version before every webapp
+   production deploy.** Patch for a bug fix (`0.1.0 → 0.1.1`), minor
+   for a new feature (`0.1.0 → 0.2.0`), major for a breaking change
+   (wire format / sync envelope). Do the bump in the same commit as
+   the fix/feature, *before* running `npm run deploy`. The version is
+   rendered in the events list footer and in Settings → About via
+   `webapp/src/buildInfo.ts` so the owner can confirm at a glance
+   that the PWA picked up the freshly-deployed shell. The build
+   timestamp on the same line auto-refreshes on every `vite build`;
+   the semver is the human-meaningful counterpart.
 
 ## Stack & architecture
 
