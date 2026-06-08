@@ -14,6 +14,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  // Build-time timestamp, surfaced in the UI as a quick "did the new
+  // version land?" indicator (see `src/buildInfo.ts`). The string is
+  // ISO so it can be parsed/formatted on the client; a fresh value is
+  // baked into every `vite build`.
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({

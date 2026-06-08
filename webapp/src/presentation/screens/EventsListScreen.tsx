@@ -30,6 +30,7 @@ import {
   setEventArchived,
 } from "@/data/repositories";
 import { fr } from "@/i18n/fr";
+import { APP_VERSION, formatBuildTime } from "@/buildInfo";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { Event } from "@/core/domain/models";
 
@@ -221,6 +222,19 @@ export function EventsListScreen() {
           <AddIcon />
         </IconButton>
       </Box>
+
+      {/* Build identity, helpful for spotting whether the PWA picked
+          up a fresh shell after a deploy. Padded so the FAB doesn't
+          cover it on short event lists. */}
+      <Box sx={{ flex: 1 }} />
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        align="center"
+        sx={{ pb: 1, pt: 2, opacity: 0.6 }}
+      >
+        v{APP_VERSION} · {formatBuildTime()}
+      </Typography>
     </Stack>
   );
 }

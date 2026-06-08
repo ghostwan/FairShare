@@ -30,8 +30,7 @@ import {
   enableWebPushGlobally,
   isWebPushSupported,
 } from "@/sync/webPush";
-
-const VERSION = "0.1.0";
+import { APP_VERSION, formatBuildTime } from "@/buildInfo";
 
 /**
  * Settings: Worker URL, Gemini key + model, auto-refresh toggle, install
@@ -207,7 +206,7 @@ export function SettingsScreen() {
         {fr.settings.about}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        {fr.settings.version}: {VERSION}
+        {fr.settings.version}: {APP_VERSION} · {formatBuildTime()}
       </Typography>
 
       <ShareGeminiKeyDialog
