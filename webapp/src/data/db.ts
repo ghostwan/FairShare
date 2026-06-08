@@ -102,6 +102,18 @@ export class FairShareDb extends Dexie {
     this.version(2).stores({
       webPushPrefs: "eventId, enabled",
     });
+    // v3: per-event gift-mode toggle on Event rows. The field default
+    // is `true` (gift mode stays on for events that pre-date it), so
+    // we backfill the column on every existing row instead of relying
+    // on `undefined` at read time — keeps the domain type strict.
+    this.version(3).upgrade(async (tx) => {
+      await tx
+        .table<Event>("events")
+        .toCollection()
+        .modify((e) => {
+          if (e.giftModeEnabled == null) e.giftModeEnabled = true;
+        });
+    });
   }
 }
 

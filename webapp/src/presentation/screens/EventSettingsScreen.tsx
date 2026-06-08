@@ -1,12 +1,14 @@
 import { useState } from "react";
 import {
   Button,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
   ListItemSecondaryAction,
   ListItemText,
   Stack,
+  Switch,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -17,8 +19,10 @@ import { useParams } from "react-router-dom";
 import {
   deleteCustomCategory,
   listCategories,
+  setEventGiftModeEnabled,
   upsertCustomCategory,
 } from "@/data/repositories";
+import { getDb } from "@/data/db";
 import { DEFAULT_CATEGORIES } from "@/core/domain/defaultCategories";
 import type { Category } from "@/core/domain/models";
 import { fr } from "@/i18n/fr";
@@ -27,12 +31,13 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 
 /**
  * Per-event settings. Currently hosts the categories CRUD (extracted
- * from EventDetailScreen's tabs). Push notifications used to live
- * here too, but the toggle moved to global Settings — one
- * subscription covers every paired event.
+ * from EventDetailScreen's tabs) and the gift-mode toggle. Push
+ * notifications used to live here too, but the toggle moved to global
+ * Settings — one subscription covers every paired event.
  */
 export function EventSettingsScreen() {
   const { eventId = "" } = useParams<{ eventId: string }>();
+  const event = useLiveQuery(() => getDb().events.get(eventId), [eventId]);
   const categories = useLiveQuery(
     () => listCategories(eventId),
     [eventId],
@@ -46,6 +51,25 @@ export function EventSettingsScreen() {
 
   return (
     <Stack spacing={2}>
+      <Typography variant="h6">{fr.eventSettings.giftSection}</Typography>
+      <Stack spacing={0.5}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={event?.giftModeEnabled ?? true}
+              disabled={event == null}
+              onChange={(e) =>
+                void setEventGiftModeEnabled(eventId, e.target.checked)
+              }
+            />
+          }
+          label={fr.events.giftMode}
+        />
+        <Typography variant="caption" color="text.secondary">
+          {fr.events.giftModeHint}
+        </Typography>
+      </Stack>
+
       <Typography variant="h6">{fr.eventSettings.categoriesSection}</Typography>
 
       <Button

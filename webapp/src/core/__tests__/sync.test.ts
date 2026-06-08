@@ -73,6 +73,7 @@ describe("codec.encodeOperation", () => {
         currency: "EUR",
         createdAt: 1700000000000,
         archived: false,
+        giftModeEnabled: true,
       },
     });
     const enc = encodeOperation(o) as Record<string, unknown>;
@@ -93,6 +94,13 @@ describe("codec.encodeOperation", () => {
     expect(json).toContain('"description":null');
     expect(json).toContain('"archived":false');
     expect(json).toContain('"currency":"EUR"');
+    // giftModeEnabled is webapp-only but still always emitted so the
+    // declaration order stays stable.
+    expect(json).toContain('"giftModeEnabled":true');
+    // And it sits after archived per declaration order.
+    expect(json.indexOf('"archived"')).toBeLessThan(
+      json.indexOf('"giftModeEnabled"'),
+    );
   });
 
   it("expense snapshot defaults all emitted", () => {
@@ -129,6 +137,7 @@ describe("codec.encodeOperation", () => {
           currency: "USD",
           createdAt: 1,
           archived: true,
+          giftModeEnabled: false,
         },
       },
       { type: OP_TYPE.EventDelete, eventId: "e" },
@@ -215,6 +224,39 @@ describe("codec.encodeOperation", () => {
     expect(expensePayload.expense.items).toEqual([]);
     expect(expensePayload.expense.categoryId).toBeNull();
     expect(expensePayload.expense.isSettlement).toBe(false);
+  });
+
+  it("decodes an EventUpsert without giftModeEnabled and defaults it to true", () => {
+    // Mirrors what an Android peer (or a webapp release < 0.2.0)
+    // emits: the snapshot lacks the giftModeEnabled field entirely.
+    // The decoder must default to `true` so the feature stays on for
+    // events relayed by peers that don't know about the flag.
+    const wire = JSON.stringify([
+      {
+        opId: "o",
+        eventId: "e",
+        deviceId: "d",
+        lamport: 1,
+        wallClockMs: 0,
+        payload: {
+          type: "com.fairshare.domain.model.sync.OpPayload.EventUpsert",
+          event: {
+            id: "e",
+            name: "Trip",
+            description: null,
+            currency: "EUR",
+            createdAt: 1,
+            archived: false,
+          },
+        },
+      },
+    ]);
+    const [back] = decodeOperationsJson(wire);
+    const payload = back!.payload as Extract<
+      OpPayload,
+      { type: typeof OP_TYPE.EventUpsert }
+    >;
+    expect(payload.event.giftModeEnabled).toBe(true);
   });
 
   it("envelope JSON declaration order", () => {
@@ -358,6 +400,7 @@ describe("materializer.resolveAll", () => {
           currency: "EUR",
           createdAt: 0,
           archived: false,
+          giftModeEnabled: true,
         },
       }),
       // Higher lamport, but EventDelete is local-only and must not

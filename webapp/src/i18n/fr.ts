@@ -32,6 +32,9 @@ export const fr = {
       "Affichez ce QR-code à votre ami·e pour ajouter son téléphone ou navigateur à cet événement.",
     inviteCopyLink: "Copier le lien",
     inviteCopied: "Lien copié",
+    giftMode: "Mode cadeau",
+    giftModeHint:
+      "Permet d'offrir une part à un·e participant·e (utile pour un anniversaire). À désactiver pour les événements où ça n'a pas de sens (loyer partagé, abonnement, etc.).",
   },
   tabs: {
     expenses: "Dépenses",
@@ -47,6 +50,7 @@ export const fr = {
   eventSettings: {
     title: "Réglages de l'événement",
     categoriesSection: "Catégories",
+    giftSection: "Mode cadeau",
   },
   expenses: {
     empty: "Aucune dépense.",

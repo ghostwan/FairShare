@@ -44,6 +44,7 @@ export function EventsListScreen() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [giftModeEnabled, setGiftModeEnabled] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [menuFor, setMenuFor] = useState<{
     event: Event;
@@ -58,10 +59,15 @@ export function EventsListScreen() {
   const onSubmit = async () => {
     const trimmed = name.trim();
     if (trimmed.length === 0) return;
-    const evt = await createEvent(trimmed, description.trim() || undefined);
+    const evt = await createEvent(
+      trimmed,
+      description.trim() || undefined,
+      giftModeEnabled,
+    );
     setCreating(false);
     setName("");
     setDescription("");
+    setGiftModeEnabled(true);
     navigate(`/event/${evt.id}`);
   };
 
@@ -201,6 +207,20 @@ export function EventsListScreen() {
               multiline
               minRows={2}
             />
+            <Stack spacing={0.5}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={giftModeEnabled}
+                    onChange={(e) => setGiftModeEnabled(e.target.checked)}
+                  />
+                }
+                label={fr.events.giftMode}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {fr.events.giftModeHint}
+              </Typography>
+            </Stack>
           </Stack>
         </DialogContent>
         <DialogActions>

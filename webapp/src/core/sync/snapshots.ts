@@ -20,6 +20,13 @@ export interface EventSnapshot {
   currency: string;
   createdAt: number;
   archived: boolean;
+  /**
+   * Webapp-only extension: per-event opt-out of the "gift" semantics
+   * exposed by AddExpense. Optional / defaulted to `true` at decode
+   * time so Android peers (which don't carry the field yet) keep gift
+   * mode enabled on the events they relay.
+   */
+  giftModeEnabled: boolean;
 }
 
 export interface ParticipantSnapshot {

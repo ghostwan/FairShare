@@ -18,6 +18,21 @@ export interface Event {
   currency: string; // ISO 4217, defaults to "EUR"
   createdAt: number; // epoch millis
   archived: boolean;
+  /**
+   * When `false`, the AddExpense screen hides the "Offert 🎁" chip
+   * state and ExpensesTab does not render the per-expense gift
+   * annotations. Useful for events where gift semantics don't apply
+   * (recurring shared bills, rent, etc.). Defaults to `true` so the
+   * feature stays on for events that pre-date this flag.
+   *
+   * Wire-format note: optional on Android peers (their `EventSnapshot`
+   * doesn't carry the field yet) — the webapp decoder defaults it to
+   * `true` when missing, so events shared from Android keep gift mode
+   * enabled. Round-tripping through an Android peer therefore can
+   * silently re-enable it; that's an accepted regression until the
+   * Kotlin snapshot is extended.
+   */
+  giftModeEnabled: boolean;
 }
 
 export interface Participant {

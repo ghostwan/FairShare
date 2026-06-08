@@ -112,6 +112,7 @@ export function EventDetailScreen() {
           expenses={expenses}
           participantsById={new Map(participants.map((p) => [p.id, p]))}
           categoriesById={new Map(categories.map((c) => [c.id, c]))}
+          giftModeEnabled={event.giftModeEnabled}
         />
       )}
       {tab === "balances" && (
@@ -248,6 +249,7 @@ function ExpensesTab(props: {
   expenses: import("@/core/domain/models").Expense[];
   participantsById: Map<string, import("@/core/domain/models").Participant>;
   categoriesById: Map<string, Category>;
+  giftModeEnabled: boolean;
 }) {
   const navigate = useNavigate();
   const [toDelete, setToDelete] = useState<
@@ -304,17 +306,21 @@ function ExpensesTab(props: {
             (e.categoryId &&
               DEFAULT_CATEGORIES.find((c) => c.id === e.categoryId));
           // Gifted-share annotations: each gifted participant's share
-          // carries the list of payer ids in coveredBy.
-          const giftLines = e.shares
-            .filter((s) => s.coveredBy && s.coveredBy.length > 0)
-            .map((s) => {
-              const giftedName =
-                props.participantsById.get(s.participantId)?.name ?? "?";
-              const payerNames = (s.coveredBy ?? [])
-                .map((id) => props.participantsById.get(id)?.name ?? "?")
-                .join(", ");
-              return `🎁 ${giftedName} (${fr.expenses.giftedBy} ${payerNames})`;
-            });
+          // carries the list of payer ids in coveredBy. Hidden when
+          // the event has opted out of gift mode — the data stays on
+          // disk so re-enabling restores the rendering immediately.
+          const giftLines = props.giftModeEnabled
+            ? e.shares
+                .filter((s) => s.coveredBy && s.coveredBy.length > 0)
+                .map((s) => {
+                  const giftedName =
+                    props.participantsById.get(s.participantId)?.name ?? "?";
+                  const payerNames = (s.coveredBy ?? [])
+                    .map((id) => props.participantsById.get(id)?.name ?? "?")
+                    .join(", ");
+                  return `🎁 ${giftedName} (${fr.expenses.giftedBy} ${payerNames})`;
+                })
+            : [];
           return (
             <ListItem
               key={e.id}

@@ -35,6 +35,7 @@ function encodeEventSnapshot(s: EventSnapshot): unknown {
     currency: s.currency,
     createdAt: s.createdAt,
     archived: s.archived,
+    giftModeEnabled: s.giftModeEnabled,
   };
 }
 
@@ -175,6 +176,13 @@ function decodeEventSnapshot(raw: unknown): EventSnapshot {
     currency: o.currency == null ? "EUR" : asString(o.currency, "event.currency"),
     createdAt: asNumber(o.createdAt, "event.createdAt"),
     archived: o.archived == null ? false : asBool(o.archived, "event.archived"),
+    // Default to `true` so peers (Android, or older webapp releases)
+    // that omit the field don't silently disable gift mode on every
+    // synced event.
+    giftModeEnabled:
+      o.giftModeEnabled == null
+        ? true
+        : asBool(o.giftModeEnabled, "event.giftModeEnabled"),
   };
 }
 

@@ -6,6 +6,7 @@ import {
   listEvents,
   listExpenses,
   listParticipants,
+  setEventGiftModeEnabled,
   upsertExpense,
 } from "@/data/repositories";
 
@@ -21,6 +22,9 @@ describe("repositories — basic CRUD through the sync coordinator", () => {
     const evt = await createEvent("Berlin", "Trip with friends");
     expect(evt.name).toBe("Berlin");
     expect(evt.description).toBe("Trip with friends");
+    // Default to true so freshly-created events ship with the gift
+    // chip enabled — opt-out only.
+    expect(evt.giftModeEnabled).toBe(true);
 
     const alice = await addParticipant(evt.id, "Alice");
     const bob = await addParticipant(evt.id, "Bob");
@@ -70,5 +74,38 @@ describe("repositories — basic CRUD through the sync coordinator", () => {
     const list = await listEvents();
     expect(list[0]!.id).toBe(b.id);
     expect(list[1]!.id).toBe(a.id);
+  });
+
+  it("createEvent honours an explicit giftModeEnabled = false", async () => {
+    const evt = await createEvent("Loyer", undefined, false);
+    expect(evt.giftModeEnabled).toBe(false);
+  });
+
+  it("setEventGiftModeEnabled toggles + emits a new op", async () => {
+    const evt = await createEvent("Brunch");
+    expect(evt.giftModeEnabled).toBe(true);
+    const opsBefore = await getDb().opLog
+      .where("eventId")
+      .equals(evt.id)
+      .count();
+
+    await setEventGiftModeEnabled(evt.id, false);
+    const updated = await getDb().events.get(evt.id);
+    expect(updated!.giftModeEnabled).toBe(false);
+
+    const opsAfter = await getDb().opLog
+      .where("eventId")
+      .equals(evt.id)
+      .count();
+    // One additional EventUpsert op was appended.
+    expect(opsAfter).toBe(opsBefore + 1);
+
+    // No-op when the state already matches: must not append.
+    await setEventGiftModeEnabled(evt.id, false);
+    const opsAgain = await getDb().opLog
+      .where("eventId")
+      .equals(evt.id)
+      .count();
+    expect(opsAgain).toBe(opsAfter);
   });
 });

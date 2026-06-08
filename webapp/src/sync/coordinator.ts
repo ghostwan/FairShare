@@ -395,6 +395,7 @@ function eventSnapshotToModel(s: EventSnapshot): Event {
     currency: s.currency,
     createdAt: s.createdAt,
     archived: s.archived,
+    giftModeEnabled: s.giftModeEnabled,
   };
 }
 

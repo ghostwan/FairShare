@@ -23,7 +23,11 @@ import { DEFAULT_CATEGORIES } from "@/core/domain/defaultCategories";
 
 // ----------------------- Events -----------------------
 
-export async function createEvent(name: string, description?: string): Promise<Event> {
+export async function createEvent(
+  name: string,
+  description?: string,
+  giftModeEnabled: boolean = true,
+): Promise<Event> {
   const id = crypto.randomUUID();
   const eventKey = randomAesKey();
   // The event secret must exist before the first emit, because emit
@@ -38,6 +42,7 @@ export async function createEvent(name: string, description?: string): Promise<E
       currency: "EUR",
       createdAt: Date.now(),
       archived: false,
+      giftModeEnabled,
     },
   });
   const e = await getDb().events.get(id);
@@ -55,6 +60,7 @@ export async function updateEvent(event: Event): Promise<void> {
       currency: event.currency,
       createdAt: event.createdAt,
       archived: event.archived,
+      giftModeEnabled: event.giftModeEnabled,
     },
   });
 }
@@ -72,6 +78,23 @@ export async function setEventArchived(
   if (!current) return;
   if (current.archived === archived) return;
   await updateEvent({ ...current, archived });
+}
+
+/**
+ * Toggle the per-event gift-mode flag. Same LWW propagation as
+ * archived. Existing `coveredBy` annotations on past expenses are
+ * preserved on disk — disabling gift mode only hides them from the
+ * AddExpense chips and the ExpensesTab list, it does not rewrite
+ * historical data.
+ */
+export async function setEventGiftModeEnabled(
+  eventId: string,
+  enabled: boolean,
+): Promise<void> {
+  const current = await getDb().events.get(eventId);
+  if (!current) return;
+  if (current.giftModeEnabled === enabled) return;
+  await updateEvent({ ...current, giftModeEnabled: enabled });
 }
 
 /**

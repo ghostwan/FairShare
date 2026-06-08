@@ -33,6 +33,7 @@ function makeOps(): Operation[] {
           currency: "EUR",
           createdAt: 1700000000000,
           archived: false,
+          giftModeEnabled: true,
         },
       },
     },

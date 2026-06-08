@@ -117,6 +117,7 @@ export function AddExpenseScreen() {
   }, [hydrated, isEdit, existing, participants]);
 
   const receiptMode = items.length > 0;
+  const giftModeEnabled = event?.giftModeEnabled ?? true;
   const itemsTotalCents = useMemo(
     () => items.reduce((s, it) => s + it.priceCents, 0),
     [items],
@@ -250,9 +251,11 @@ export function AddExpenseScreen() {
           <Typography variant="caption" color="text.secondary">
             {fr.expenses.splitEqual}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {fr.expenses.giftHint}
-          </Typography>
+          {giftModeEnabled && (
+            <Typography variant="caption" color="text.secondary">
+              {fr.expenses.giftHint}
+            </Typography>
+          )}
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
             {participants.map((p) => {
               const included = participantsIncluded.has(p.id);
@@ -263,16 +266,22 @@ export function AddExpenseScreen() {
                   ? "in"
                   : "off";
               const onClick = () => {
-                // Cycle: off → in → gift → off. The two sets are
-                // kept disjoint by always recomputing both at once.
+                // Cycle: off → in → gift → off when gift mode is on,
+                // otherwise binary off → in → off. The two sets stay
+                // disjoint by always recomputing both at once.
                 const nextIn = new Set(participantsIncluded);
                 const nextGift = new Set(participantsGifted);
                 if (state === "off") {
                   nextIn.add(p.id);
                   nextGift.delete(p.id);
                 } else if (state === "in") {
-                  nextIn.delete(p.id);
-                  nextGift.add(p.id);
+                  if (giftModeEnabled) {
+                    nextIn.delete(p.id);
+                    nextGift.add(p.id);
+                  } else {
+                    nextIn.delete(p.id);
+                    nextGift.delete(p.id);
+                  }
                 } else {
                   nextIn.delete(p.id);
                   nextGift.delete(p.id);
