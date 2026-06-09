@@ -5,6 +5,7 @@ import {
   Card,
   CardActionArea,
   CardContent,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -39,7 +40,6 @@ export function EventsListScreen() {
   const allEvents = useLiveQuery(
     () => getDb().events.orderBy("createdAt").reverse().toArray(),
     [],
-    [],
   );
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -71,7 +71,14 @@ export function EventsListScreen() {
     navigate(`/event/${evt.id}`);
   };
 
-  if (allEvents == null) return null;
+  if (allEvents == null)
+    return (
+      <Box
+        sx={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1, py: 4 }}
+      >
+        <CircularProgress />
+      </Box>
+    );
 
   const visible = allEvents.filter((e) => !!e.archived === showArchived);
   const hasArchived = allEvents.some((e) => e.archived);

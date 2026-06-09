@@ -395,7 +395,12 @@ function eventSnapshotToModel(s: EventSnapshot): Event {
     currency: s.currency,
     createdAt: s.createdAt,
     archived: s.archived,
-    giftModeEnabled: s.giftModeEnabled,
+    // Defense in depth: peers that pre-date the giftModeEnabled
+    // field (Android < the corresponding bump, or any other client
+    // that omits it) should not silently disable gift mode on us.
+    // The codec already defaults to true on decode; this fallback
+    // keeps the property safe if a caller skips that path.
+    giftModeEnabled: s.giftModeEnabled ?? true,
   };
 }
 

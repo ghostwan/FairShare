@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Card,
@@ -38,8 +38,24 @@ export function ReceiptItemsEditor(props: {
   currency?: string;
   /** Show an "Add item" button at the bottom of the list. */
   allowAdd?: boolean;
+  /**
+   * Gifted participants. Hidden from per-item assignment chips and
+   * from the per-person summary — they're managed by a separate
+   * global picker in the parent screen (mirrors the simple-mode
+   * gift cycle). Forwarded to `assignReceiptItems` so the summary
+   * uses the same fallback rules as the eventual save.
+   */
+  giftedIds?: string[];
 }) {
   const { items, participants, onChange } = props;
+  const giftedSet = useMemo(
+    () => new Set(props.giftedIds ?? []),
+    [props.giftedIds],
+  );
+  const eligibleParticipants = useMemo(
+    () => participants.filter((p) => !giftedSet.has(p.id)),
+    [participants, giftedSet],
+  );
 
   const updateItem = (index: number, patch: Partial<ExpenseItem>) =>
     onChange(items.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -76,7 +92,7 @@ export function ReceiptItemsEditor(props: {
         <ItemCard
           key={it.id}
           item={it}
-          participants={participants}
+          participants={eligibleParticipants}
           currency={props.currency}
           onLabelChange={(label) => updateItem(i, { label })}
           onPriceChange={(priceCents) => updateItem(i, { priceCents })}
@@ -97,7 +113,9 @@ export function ReceiptItemsEditor(props: {
       )}
       <PerPersonSummary
         items={items}
-        participants={participants}
+        participants={eligibleParticipants}
+        allParticipantIds={participants.map((p) => p.id)}
+        giftedIds={props.giftedIds ?? []}
         currency={props.currency}
       />
     </Stack>
@@ -195,13 +213,22 @@ function ItemCard(props: {
 
 function PerPersonSummary(props: {
   items: ExpenseItem[];
+  /** Non-gifted participants, the only ones who show in the summary. */
   participants: Participant[];
+  /**
+   * All participant ids (including gifted). Forwarded to
+   * `assignReceiptItems` so the fallback "no-one ticked = everyone
+   * pays" gets pruned to eligibles, matching the eventual save.
+   */
+  allParticipantIds: string[];
+  giftedIds: string[];
   currency?: string;
 }) {
   if (props.items.length === 0 || props.participants.length === 0) return null;
   const shares = assignReceiptItems(
     props.items,
-    props.participants.map((p) => p.id),
+    props.allParticipantIds,
+    props.giftedIds,
   );
   const byId = new Map(shares.map((s) => [s.participantId, s.amountCents]));
   return (

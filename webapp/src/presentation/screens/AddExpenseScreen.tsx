@@ -145,7 +145,11 @@ export function AddExpenseScreen() {
       .map((p) => p.id)
       .filter((id) => participantsGifted.has(id));
     const shares = receiptMode
-      ? assignReceiptItems(items, participants.map((p) => p.id))
+      ? assignReceiptItems(
+          items,
+          participants.map((p) => p.id),
+          orderedGifted,
+        )
       : splitEqually(amountCents, orderedIncluded, orderedGifted);
     const exp: Expense = {
       id: existing?.id ?? "",
@@ -240,12 +244,59 @@ export function AddExpenseScreen() {
 
       <Typography variant="subtitle2">{fr.expenses.split}</Typography>
       {receiptMode ? (
-        <ReceiptItemsEditor
-          items={items}
-          participants={participants}
-          onChange={setItems}
-          allowAdd
-        />
+        <>
+          {giftModeEnabled && (
+            <Box>
+              <Typography variant="subtitle2">
+                {fr.expenses.receiptGiftTitle}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", mb: 1 }}
+              >
+                {fr.expenses.receiptGiftHint}
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                {participants.map((p) => {
+                  const gifted = participantsGifted.has(p.id);
+                  return (
+                    <Chip
+                      key={p.id}
+                      label={p.name}
+                      onClick={() => {
+                        const next = new Set(participantsGifted);
+                        if (gifted) next.delete(p.id);
+                        else next.add(p.id);
+                        setParticipantsGifted(next);
+                      }}
+                      color={gifted ? "secondary" : "default"}
+                      variant={gifted ? "filled" : "outlined"}
+                      icon={
+                        gifted ? (
+                          <CardGiftcardIcon fontSize="small" />
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+          <ReceiptItemsEditor
+            items={items}
+            participants={participants}
+            onChange={setItems}
+            allowAdd
+            giftedIds={
+              giftModeEnabled
+                ? participants
+                    .map((p) => p.id)
+                    .filter((id) => participantsGifted.has(id))
+                : []
+            }
+          />
+        </>
       ) : (
         <>
           <Typography variant="caption" color="text.secondary">

@@ -67,6 +67,9 @@ export const fr = {
     giftHint:
       "Clique sur un participant : inclus → offert 🎁 → exclu. Les personnes offertes ne paient rien, leur part est absorbée par les inclus.",
     giftedBy: "offert par",
+    receiptGiftTitle: "Participants offerts",
+    receiptGiftHint:
+      "Coche les personnes à qui le ticket est offert. Leur part est absorbée par les autres, et elles disparaissent des chips article par article.",
     save: "Enregistrer",
     delete: "Supprimer",
     confirmDelete: "Supprimer cette dépense ?",
