@@ -69,7 +69,7 @@ export const fr = {
     giftedBy: "offert par",
     receiptGiftTitle: "Participants offerts",
     receiptGiftHint:
-      "Coche les personnes à qui le ticket est offert. Leur part est absorbée par les autres, et elles disparaissent des chips article par article.",
+      "Coche les personnes à qui le ticket est offert. Leur part est répartie équitablement sur tous les autres participants, indépendamment de qui a coché quoi sur chaque article.",
     save: "Enregistrer",
     delete: "Supprimer",
     confirmDelete: "Supprimer cette dépense ?",

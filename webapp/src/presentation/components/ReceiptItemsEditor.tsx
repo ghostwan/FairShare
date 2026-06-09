@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
 import { Button } from "@mui/material";
 import type { ExpenseItem, Participant } from "@/core/domain/models";
 import { assignReceiptItems } from "@/core/domain/receiptAssign";
@@ -30,6 +31,14 @@ import { formatMoneyCents } from "../format";
  * Renders a `PerPersonSummary` card at the bottom recomputed live
  * from the current items, so users see exactly what each participant
  * will pay before saving.
+ *
+ * Gift mode interplay: gifted participants are NOT filtered from the
+ * per-item chips, because their `assignedTo` membership decides how
+ * much of the receipt is "imputable" to them (which then gets
+ * redistributed across the eligibles). Gifted chips are rendered
+ * with a secondary colour + gift icon to make the dual role obvious:
+ * ticking still means "this person ate this article" — and that
+ * raises the global gift bucket they'll absorb.
  */
 export function ReceiptItemsEditor(props: {
   items: ExpenseItem[];
@@ -39,23 +48,18 @@ export function ReceiptItemsEditor(props: {
   /** Show an "Add item" button at the bottom of the list. */
   allowAdd?: boolean;
   /**
-   * Gifted participants. Hidden from per-item assignment chips and
-   * from the per-person summary — they're managed by a separate
-   * global picker in the parent screen (mirrors the simple-mode
-   * gift cycle). Forwarded to `assignReceiptItems` so the summary
-   * uses the same fallback rules as the eventual save.
+   * Gifted participants. Their per-item raw share is collected and
+   * redistributed equally over the eligibles by `assignReceiptItems`.
+   * Their global gift state is managed by a separate picker in the
+   * parent screen — this editor only reads the list to (a) decorate
+   * the per-item chips with a gift style and (b) feed it to the
+   * preview/save calls so the per-person summary matches what gets
+   * saved.
    */
   giftedIds?: string[];
 }) {
   const { items, participants, onChange } = props;
-  const giftedSet = useMemo(
-    () => new Set(props.giftedIds ?? []),
-    [props.giftedIds],
-  );
-  const eligibleParticipants = useMemo(
-    () => participants.filter((p) => !giftedSet.has(p.id)),
-    [participants, giftedSet],
-  );
+  const giftedIds = props.giftedIds ?? [];
 
   const updateItem = (index: number, patch: Partial<ExpenseItem>) =>
     onChange(items.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -92,7 +96,8 @@ export function ReceiptItemsEditor(props: {
         <ItemCard
           key={it.id}
           item={it}
-          participants={eligibleParticipants}
+          participants={participants}
+          giftedIds={giftedIds}
           currency={props.currency}
           onLabelChange={(label) => updateItem(i, { label })}
           onPriceChange={(priceCents) => updateItem(i, { priceCents })}
@@ -113,9 +118,8 @@ export function ReceiptItemsEditor(props: {
       )}
       <PerPersonSummary
         items={items}
-        participants={eligibleParticipants}
-        allParticipantIds={participants.map((p) => p.id)}
-        giftedIds={props.giftedIds ?? []}
+        participants={participants}
+        giftedIds={giftedIds}
         currency={props.currency}
       />
     </Stack>
@@ -125,6 +129,7 @@ export function ReceiptItemsEditor(props: {
 function ItemCard(props: {
   item: ExpenseItem;
   participants: Participant[];
+  giftedIds: string[];
   currency?: string;
   onLabelChange: (label: string) => void;
   onPriceChange: (priceCents: number) => void;
@@ -132,6 +137,7 @@ function ItemCard(props: {
   onDelete: () => void;
 }) {
   const { item } = props;
+  const giftedSet = useMemo(() => new Set(props.giftedIds), [props.giftedIds]);
   const [priceText, setPriceText] = useState(
     (item.priceCents / 100).toFixed(2).replace(".", ","),
   );
@@ -183,13 +189,25 @@ function ItemCard(props: {
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
             {props.participants.map((p) => {
               const selected = item.assignedTo.includes(p.id);
+              const gifted = giftedSet.has(p.id);
               return (
                 <Chip
                   key={p.id}
                   label={p.name}
                   size="small"
                   variant={selected ? "filled" : "outlined"}
-                  color={selected ? "primary" : "default"}
+                  color={
+                    gifted
+                      ? "secondary"
+                      : selected
+                        ? "primary"
+                        : "default"
+                  }
+                  icon={
+                    gifted ? (
+                      <CardGiftcardIcon fontSize="small" />
+                    ) : undefined
+                  }
                   onClick={() => props.onToggle(p.id)}
                 />
               );
@@ -213,21 +231,15 @@ function ItemCard(props: {
 
 function PerPersonSummary(props: {
   items: ExpenseItem[];
-  /** Non-gifted participants, the only ones who show in the summary. */
   participants: Participant[];
-  /**
-   * All participant ids (including gifted). Forwarded to
-   * `assignReceiptItems` so the fallback "no-one ticked = everyone
-   * pays" gets pruned to eligibles, matching the eventual save.
-   */
-  allParticipantIds: string[];
   giftedIds: string[];
   currency?: string;
 }) {
   if (props.items.length === 0 || props.participants.length === 0) return null;
+  const giftedSet = new Set(props.giftedIds);
   const shares = assignReceiptItems(
     props.items,
-    props.allParticipantIds,
+    props.participants.map((p) => p.id),
     props.giftedIds,
   );
   const byId = new Map(shares.map((s) => [s.participantId, s.amountCents]));
@@ -238,17 +250,29 @@ function PerPersonSummary(props: {
           Détail par personne
         </Typography>
         <List dense disablePadding>
-          {props.participants.map((p) => (
-            <ListItem key={p.id} disablePadding sx={{ py: 0.25 }}>
-              <ListItemText
-                primary={p.name}
-                slotProps={{ primary: { variant: "body2" } }}
-              />
-              <Typography variant="body2">
-                {formatMoneyCents(byId.get(p.id) ?? 0, props.currency)}
-              </Typography>
-            </ListItem>
-          ))}
+          {props.participants.map((p) => {
+            const gifted = giftedSet.has(p.id);
+            return (
+              <ListItem key={p.id} disablePadding sx={{ py: 0.25 }}>
+                <ListItemText
+                  primary={
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {gifted && (
+                        <CardGiftcardIcon
+                          fontSize="small"
+                          color="secondary"
+                        />
+                      )}
+                      <Typography variant="body2">{p.name}</Typography>
+                    </Stack>
+                  }
+                />
+                <Typography variant="body2">
+                  {formatMoneyCents(byId.get(p.id) ?? 0, props.currency)}
+                </Typography>
+              </ListItem>
+            );
+          })}
         </List>
       </CardContent>
     </Card>

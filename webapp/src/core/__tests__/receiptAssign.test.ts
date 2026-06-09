@@ -63,35 +63,57 @@ describe("assignReceiptItems", () => {
     expect(total).toBe(333 + 777);
   });
 
-  test("gifted participant is stripped from explicit assignees", () => {
-    // c is gifted: even if the per-item chip still lists them, they
-    // don't pay. The remaining assignee (a) covers the full price.
+  test("gifted share is redistributed across all eligibles, not just co-tickers", () => {
+    // The reference example: A,B,C participants, A is gifted.
+    // Article 1 = 60c ticked by A,B  -> raw a=30, b=30
+    // Article 2 = 30c ticked by B,C  -> raw b=15, c=15
+    // Combined raw: a=30, b=45, c=15.
+    // A's 30c is redistributed equally across [b,c] (+15 each):
+    // final b=60, c=30. (Not b=75, c=15 which would be "only co-tickers
+    // of article 1 absorb A's share".)
     const shares = assignReceiptItems(
-      [mkItem(900, ["a", "c"])],
+      [mkItem(60, ["a", "b"]), mkItem(30, ["b", "c"])],
       ["a", "b", "c"],
-      ["c"],
+      ["a"],
     );
     const map = new Map(shares.map((s) => [s.participantId, s]));
-    expect(map.get("a")?.amountCents).toBe(900);
-    expect(map.get("b")).toBeUndefined();
-    expect(map.get("c")?.amountCents).toBe(0);
-    expect(map.get("c")?.coveredBy).toEqual(["a", "b"]);
+    expect(map.get("b")?.amountCents).toBe(60);
+    expect(map.get("c")?.amountCents).toBe(30);
+    expect(map.get("a")?.amountCents).toBe(0);
+    expect(map.get("a")?.coveredBy).toEqual(["b", "c"]);
   });
 
-  test("unassigned items fall back to eligible participants only", () => {
-    // No-one ticked: split across (all − gifted) = a, b.
+  test("unticking a gifted means their non-membership is honoured", () => {
+    // A gifted but A didn't tick the item. Nothing to redistribute,
+    // B and C just split it normally.
+    const shares = assignReceiptItems(
+      [mkItem(60, ["b", "c"])],
+      ["a", "b", "c"],
+      ["a"],
+    );
+    const map = new Map(shares.map((s) => [s.participantId, s]));
+    expect(map.get("b")?.amountCents).toBe(30);
+    expect(map.get("c")?.amountCents).toBe(30);
+    expect(map.get("a")?.amountCents).toBe(0);
+    expect(map.get("a")?.coveredBy).toEqual(["b", "c"]);
+  });
+
+  test("unassigned items raw-split across all then redistribute", () => {
+    // 1000c on [a,b,c] raw -> a=334, b=333, c=333.
+    // c gifted, 333c redistributed on [a,b] -> +167, +166.
+    // final a=501, b=499.
     const shares = assignReceiptItems(
       [mkItem(1000, [])],
       ["a", "b", "c"],
       ["c"],
     );
     const map = new Map(shares.map((s) => [s.participantId, s.amountCents]));
-    expect(map.get("a")).toBe(500);
-    expect(map.get("b")).toBe(500);
+    expect(map.get("a")).toBe(501);
+    expect(map.get("b")).toBe(499);
     expect(map.get("c")).toBe(0);
   });
 
-  test("emits one zero-cent gift placeholder per gifted with coveredBy = eligible", () => {
+  test("emits one zero-cent gift placeholder per gifted with coveredBy = eligibleAll", () => {
     const shares = assignReceiptItems(
       [mkItem(600, ["a", "b"])],
       ["a", "b", "c", "d"],
@@ -115,8 +137,8 @@ describe("assignReceiptItems", () => {
 
   test("only-gifted item with empty eligibleAll produces no paying share but keeps gift placeholder", () => {
     // Degenerate: a single participant exists and they're gifted.
-    // Nothing to split (assignees=[] after filter, eligibleAll=[]),
-    // but the gift annotation still surfaces.
+    // Nothing to redistribute (eligibleAll=[]), but the gift
+    // annotation still surfaces.
     const shares = assignReceiptItems(
       [mkItem(500, ["a"])],
       ["a"],
