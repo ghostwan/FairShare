@@ -21,13 +21,16 @@ import { base64UrlDecode, base64UrlEncode } from "../crypto/base64";
  * the key produces a value that fails AES-GCM authentication on the
  * first pull; the sync layer surfaces it then.
  *
- * Optional trailing parameters, appended only when the inviter opts in
- * to share their Gemini API key:
+ * Optional fragment, appended only when the inviter opts in to share
+ * their Gemini API key:
  *
- *   &gk=<percent-encoded Gemini key>&gm=<percent-encoded Gemini model>
+ *   #gk=<percent-encoded Gemini key>&gm=<percent-encoded Gemini model>
  *
- * `gm` is only meaningful alongside `gk`. Older decoders skip unknown
- * params, so the format stays backward compatible.
+ * It lives in the fragment (not the query) so browsers never send it
+ * to the webapp host: it can't end up in Cloudflare Pages access logs.
+ * `gm` is only meaningful alongside `gk`. Links without the fragment
+ * are unchanged; links with it are rejected by decoders that predate
+ * this field (they read `key=…#gk=…` as one malformed key).
  *
  * `event` / `key` values are *not* percent-encoded: the parser splits on `&` then on
  * the first `=`. base64url without padding never produces `&` or `=`
@@ -84,7 +87,7 @@ export function encodeInvitation(
   let query = `event=${eventId}&key=${key}`;
   const gk = gemini?.key.trim();
   if (gk) {
-    query += `&gk=${encodeURIComponent(gk)}`;
+    query += `#gk=${encodeURIComponent(gk)}`;
     const gm = gemini?.model?.trim();
     if (gm) query += `&gm=${encodeURIComponent(gm)}`;
   }
@@ -95,7 +98,11 @@ export function encodeInvitation(
 
 /** Parses the URL, returns the bundle. */
 export function decodeInvitation(url: string): DecodedInvitation {
-  const query = stripPrefix(url);
+  const hash = url.indexOf("#");
+  const base = hash >= 0 ? url.slice(0, hash) : url;
+  const fragment =
+    hash >= 0 ? parseQuery(url.slice(hash + 1)) : null;
+  const query = stripPrefix(base);
   if (query == null) {
     throw new InvitationDecodeException({ kind: "MalformedUrl" });
   }
@@ -119,8 +126,8 @@ export function decodeInvitation(url: string): DecodedInvitation {
     throw new InvitationDecodeException({ kind: "MalformedUrl" });
   }
 
-  const geminiKey = safeDecode(params.get("gk"));
-  const geminiModel = geminiKey ? safeDecode(params.get("gm")) : null;
+  const geminiKey = safeDecode(fragment?.get("gk"));
+  const geminiModel = geminiKey ? safeDecode(fragment?.get("gm")) : null;
 
   return { eventId, eventKey, geminiKey, geminiModel };
 }

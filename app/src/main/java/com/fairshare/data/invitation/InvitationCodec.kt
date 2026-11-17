@@ -19,15 +19,17 @@ import java.util.Base64
  *
  *   https://fairshare-web-bdg.pages.dev/join?event=<eventId>&key=…
  *
- * Optional trailing parameters, appended only when the inviter opts in
- * to share their Gemini API key with the invitee:
+ * Optional fragment, appended only when the inviter opts in to share
+ * their Gemini API key with the invitee:
  *
- *   &gk=<urlencoded Gemini key>&gm=<urlencoded Gemini model>
+ *   #gk=<urlencoded Gemini key>&gm=<urlencoded Gemini model>
  *
- * `gm` is only meaningful alongside `gk`. Decoders that predate these
- * fields ignore them (unknown params are skipped), so the format stays
- * backward compatible. Byte-compatible with
- * `webapp/src/core/invitation/codec.ts`.
+ * It lives in the fragment (not the query) so browsers never send it
+ * to the webapp host: it can't end up in Cloudflare Pages access logs.
+ * `gm` is only meaningful alongside `gk`. Links without the fragment
+ * are unchanged; links with it are rejected by decoders that predate
+ * this field (they read `key=…#gk=…` as one malformed key).
+ * Byte-compatible with `webapp/src/core/invitation/codec.ts`.
  *
  * Both forms are interchangeable on decode. The https form is the
  * default for QR codes so iOS Safari / Camera open it natively; the
@@ -110,7 +112,7 @@ internal object InvitationCodec {
             append("event=").append(eventId).append("&key=").append(key)
             val gk = geminiKey?.trim()
             if (!gk.isNullOrEmpty()) {
-                append("&gk=").append(urlEncode(gk))
+                append("#gk=").append(urlEncode(gk))
                 val gm = geminiModel?.trim()
                 if (!gm.isNullOrEmpty()) append("&gm=").append(urlEncode(gm))
             }
@@ -123,7 +125,10 @@ internal object InvitationCodec {
 
     /** Parses an invitation URL, returns the bundle. */
     fun decode(url: String): Result<Decoded> {
-        val params = parseUrl(url) ?: return Result.failure(
+        val hash = url.indexOf('#')
+        val base = if (hash >= 0) url.substring(0, hash) else url
+        val fragment = if (hash >= 0) parsePairs(url.substring(hash + 1)) else emptyMap()
+        val params = parseUrl(base) ?: return Result.failure(
             DecodeException(DecodeError.MalformedUrl),
         )
         val eventId = params["event"] ?: return Result.failure(
@@ -139,12 +144,12 @@ internal object InvitationCodec {
             return Result.failure(DecodeException(DecodeError.MalformedUrl))
         }
 
-        val geminiKey = params["gk"]
+        val geminiKey = fragment["gk"]
             ?.let { runCatching { urlDecode(it) }.getOrNull() }
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
         val geminiModel = geminiKey?.let {
-            params["gm"]
+            fragment["gm"]
                 ?.let { runCatching { urlDecode(it) }.getOrNull() }
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
@@ -176,12 +181,15 @@ internal object InvitationCodec {
             }
         }
         if (query.isEmpty()) return null
-        return query.split('&').mapNotNull { pair ->
+        return parsePairs(query)
+    }
+
+    private fun parsePairs(s: String): Map<String, String> =
+        s.split('&').mapNotNull { pair ->
             val eq = pair.indexOf('=')
             if (eq <= 0 || eq == pair.lastIndex) null
             else pair.substring(0, eq) to pair.substring(eq + 1)
         }.toMap()
-    }
 
     private fun urlEncode(s: String): String =
         URLEncoder.encode(s, "UTF-8").replace("+", "%20")

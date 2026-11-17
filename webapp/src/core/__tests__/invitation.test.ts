@@ -73,7 +73,8 @@ describe("invitation.codec", () => {
       key: " AIzaSy-abc_DEF/+= ",
       model: "gemini-2.5-flash",
     });
-    expect(url).toContain("&gk=AIzaSy-abc_DEF%2F%2B%3D&gm=gemini-2.5-flash");
+    expect(url.split("#")[1]).toBe("gk=AIzaSy-abc_DEF%2F%2B%3D&gm=gemini-2.5-flash");
+    expect(url.split("#")[0]).not.toContain("gk=");
     const back = decodeInvitation(url);
     expect(back.eventId).toBe(EVENT_ID);
     expect(Array.from(back.eventKey)).toEqual(Array.from(eventKey()));
@@ -83,7 +84,7 @@ describe("invitation.codec", () => {
 
   it("ignores a gemini model without key", () => {
     const base = encodeInvitation(EVENT_ID, eventKey(), "custom");
-    const back = decodeInvitation(`${base}&gm=gemini-2.5-pro`);
+    const back = decodeInvitation(`${base}#gm=gemini-2.5-pro`);
     expect(back.geminiKey).toBeNull();
     expect(back.geminiModel).toBeNull();
   });
@@ -91,9 +92,16 @@ describe("invitation.codec", () => {
   it("decodes the Android gemini wire format", () => {
     // Same vector as InvitationCodecTest.kt (URLEncoder + %20).
     const base = encodeInvitation(EVENT_ID, eventKey(), "https");
-    const back = decodeInvitation(`${base}&gk=AIza%20x%2Fy&gm=gemini-2.5-pro`);
+    const back = decodeInvitation(`${base}#gk=AIza%20x%2Fy&gm=gemini-2.5-pro`);
     expect(back.geminiKey).toBe("AIza x/y");
     expect(back.geminiModel).toBe("gemini-2.5-pro");
+  });
+
+  it("ignores gemini params in the query", () => {
+    const base = encodeInvitation(EVENT_ID, eventKey(), "https");
+    const back = decodeInvitation(`${base}&gk=AIzaX`);
+    expect(Array.from(back.eventKey)).toEqual(Array.from(eventKey()));
+    expect(back.geminiKey).toBeNull();
   });
 
   it("stays compact (constant-size URL)", () => {

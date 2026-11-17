@@ -70,7 +70,7 @@ class InvitationCodecTest {
             geminiKey = " AIzaSy-abc_DEF/+= ",
             geminiModel = "gemini-2.5-flash",
         )
-        assertTrue(url.contains("&gk=AIzaSy-abc_DEF%2F%2B%3D&gm=gemini-2.5-flash"))
+        assertTrue(url.endsWith("&key=${java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)}#gk=AIzaSy-abc_DEF%2F%2B%3D&gm=gemini-2.5-flash"))
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals(eventId, decoded.eventId)
         assertTrue(decoded.eventKey.contentEquals(key))
@@ -81,7 +81,7 @@ class InvitationCodecTest {
     @Test
     fun `gemini model without key is ignored`() {
         val keyB64 = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
-        val url = "fairshare://join?event=$eventId&key=$keyB64&gm=gemini-2.5-pro"
+        val url = "fairshare://join?event=$eventId&key=$keyB64#gm=gemini-2.5-pro"
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertNull(decoded.geminiKey)
         assertNull(decoded.geminiModel)
@@ -92,10 +92,19 @@ class InvitationCodecTest {
         // Same vector as webapp/src/core/__tests__/invitation.test.ts.
         val keyB64 = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
         val url = "https://fairshare-web-bdg.pages.dev/join?event=$eventId&key=$keyB64" +
-            "&gk=AIza%20x%2Fy&gm=gemini-2.5-pro"
+            "#gk=AIza%20x%2Fy&gm=gemini-2.5-pro"
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals("AIza x/y", decoded.geminiKey)
         assertEquals("gemini-2.5-pro", decoded.geminiModel)
+    }
+
+    @Test
+    fun `gemini params in the query are ignored`() {
+        val keyB64 = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
+        val url = "https://fairshare-web-bdg.pages.dev/join?event=$eventId&key=$keyB64&gk=AIzaX"
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertTrue(decoded.eventKey.contentEquals(key))
+        assertNull(decoded.geminiKey)
     }
 
     @Test
