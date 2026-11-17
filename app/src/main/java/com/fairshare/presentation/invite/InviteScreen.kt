@@ -25,11 +25,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -93,6 +95,9 @@ fun InviteScreen(
                 state.url != null -> Content(
                     url = state.url!!,
                     syncWarning = state.syncWarning,
+                    hasGeminiKey = state.hasGeminiKey,
+                    includeGeminiKey = state.includeGeminiKey,
+                    onIncludeGeminiKeyChange = vm::setIncludeGeminiKey,
                     onCopy = { copyToClipboard(context, state.url!!) },
                     onShare = { shareText(context, state.url!!) },
                 )
@@ -109,6 +114,9 @@ fun InviteScreen(
 private fun Content(
     url: String,
     syncWarning: Boolean,
+    hasGeminiKey: Boolean,
+    includeGeminiKey: Boolean,
+    onIncludeGeminiKeyChange: (Boolean) -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -133,6 +141,26 @@ private fun Content(
                     "(pull-to-refresh ou Paramètres → Synchroniser).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (hasGeminiKey) {
+            ListItem(
+                headlineContent = { Text("Partager aussi ma clé Gemini") },
+                supportingContent = {
+                    Text(
+                        if (includeGeminiKey)
+                            "Le lien contient ta clé Gemini en clair : l'invité " +
+                                "pourra scanner des tickets avec l'IA sur ton quota."
+                        else
+                            "Permet à l'invité d'utiliser le scan IA avec ta clé.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = includeGeminiKey,
+                        onCheckedChange = onIncludeGeminiKeyChange,
+                    )
+                },
             )
         }
         QrCodeBlock(content = url)

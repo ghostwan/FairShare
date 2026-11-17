@@ -23,14 +23,27 @@ class InvitationExporter @Inject constructor(
         data object EncryptionKeyMissing : ExportError
     }
 
-    /** Returns the invitation URL or a typed error. */
-    suspend fun export(eventId: String): Result<Export> {
+    /**
+     * Returns the invitation URL or a typed error. When [geminiKey] is
+     * non-blank it is appended to the URL (with [geminiModel]) so the
+     * invitee can reuse it for AI receipt scans.
+     */
+    suspend fun export(
+        eventId: String,
+        geminiKey: String? = null,
+        geminiModel: String? = null,
+    ): Result<Export> {
         val event = eventDao.getById(eventId)
             ?: return Result.failure(ExportException(ExportError.EventNotFound))
         if (event.encryptionKey.isEmpty()) {
             return Result.failure(ExportException(ExportError.EncryptionKeyMissing))
         }
-        val url = InvitationCodec.encode(eventId, event.encryptionKey)
+        val url = InvitationCodec.encode(
+            eventId = eventId,
+            eventKey = event.encryptionKey,
+            geminiKey = geminiKey,
+            geminiModel = geminiModel,
+        )
         return Result.success(Export(url = url))
     }
 

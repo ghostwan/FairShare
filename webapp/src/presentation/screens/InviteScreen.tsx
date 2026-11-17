@@ -4,7 +4,9 @@ import {
   Box,
   Button,
   CircularProgress,
+  FormControlLabel,
   Snackbar,
+  Switch,
   Stack,
   Typography,
 } from "@mui/material";
@@ -12,6 +14,7 @@ import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { fr } from "@/i18n/fr";
 import { buildInvitationForEvent } from "@/sync/coordinator";
+import { Settings } from "@/data/settings";
 
 /**
  * Render the invitation as a QR code + copyable link. The QR encodes
@@ -25,6 +28,10 @@ import { buildInvitationForEvent } from "@/sync/coordinator";
  * result is the QR getting stretched vertically on mobile. An `<img>`
  * with `width: 100%, height: auto` defers all sizing to CSS and keeps
  * the QR a perfect square at any viewport width.
+ *
+ * When a Gemini key is configured locally, a switch lets the inviter
+ * embed it (with the model) in the link so the invitee can use the AI
+ * receipt scan right away. Off by default.
  */
 export function InviteScreen() {
   const { eventId = "" } = useParams<{ eventId: string }>();
@@ -32,12 +39,29 @@ export function InviteScreen() {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gemini, setGemini] = useState<{ key: string; model: string } | null>(
+    null,
+  );
+  const [includeGemini, setIncludeGemini] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const key = (await Settings.getGeminiApiKey()).trim();
+      const model = (await Settings.getGeminiModel()).trim();
+      setGemini(key ? { key, model } : null);
+    })();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    setDataUrl(null);
     void (async () => {
       try {
-        const u = await buildInvitationForEvent(eventId);
+        const share =
+          includeGemini && gemini
+            ? { key: gemini.key, model: gemini.model || null }
+            : null;
+        const u = await buildInvitationForEvent(eventId, share);
         if (cancelled) return;
         setUrl(u);
         const d = await QRCode.toDataURL(u, {
@@ -55,7 +79,7 @@ export function InviteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, includeGemini, gemini]);
 
   const copy = async () => {
     if (!url) return;
@@ -73,6 +97,24 @@ export function InviteScreen() {
       <Typography variant="body2" color="text.secondary" align="center">
         {fr.events.inviteHint}
       </Typography>
+      {gemini && (
+        <Stack sx={{ maxWidth: 320, width: "100%" }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={includeGemini}
+                onChange={(e) => setIncludeGemini(e.target.checked)}
+              />
+            }
+            label={fr.events.inviteIncludeGemini}
+          />
+          {includeGemini && (
+            <Typography variant="caption" color="warning.main">
+              {fr.events.inviteIncludeGeminiHint}
+            </Typography>
+          )}
+        </Stack>
+      )}
       <Box
         sx={{
           width: "100%",

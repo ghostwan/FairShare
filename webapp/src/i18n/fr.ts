@@ -32,6 +32,9 @@ export const fr = {
       "Affichez ce QR-code à votre ami·e pour ajouter son téléphone ou navigateur à cet événement.",
     inviteCopyLink: "Copier le lien",
     inviteCopied: "Lien copié",
+    inviteIncludeGemini: "Partager aussi ma clé Gemini",
+    inviteIncludeGeminiHint:
+      "Le lien contiendra votre clé Gemini en clair : l'invité·e pourra scanner des tickets avec l'IA sur votre quota.",
     giftMode: "Mode cadeau",
     giftModeHint:
       "Permet d'offrir une part à un·e participant·e (utile pour un anniversaire). À désactiver pour les événements où ça n'a pas de sens (loyer partagé, abonnement, etc.).",
@@ -132,11 +135,17 @@ export const fr = {
       "Sur iPhone/iPad, ouvrez le menu Partager dans Safari puis « Sur l'écran d'accueil ».",
     save: "Enregistrer",
     saved: "Réglages enregistrés",
-    shareGeminiKey: "Partager via QR",
+    shareGeminiKey: "Afficher / partager",
+    showGeminiKey: "Afficher la clé",
+    hideGeminiKey: "Masquer la clé",
+    geminiKeyCopy: "Copier la clé",
+    geminiKeyCopied: "Clé copiée",
+    geminiKeyShareWarning:
+      "Toute personne ayant cette clé consomme votre quota Gemini.",
     scanGeminiKey: "Scanner un QR",
     geminiQrTitle: "Partager la clé Gemini",
     geminiQrHint:
-      "Scannez ce QR depuis l'app FairShare sur un autre appareil pour y copier votre clé Gemini. Ne le partagez qu'avec vos appareils.",
+      "Scannez ce QR depuis l'app FairShare sur un autre appareil, ou copiez la clé ci-dessous pour l'envoyer. Ne la partagez qu'avec des personnes de confiance.",
     geminiKeyImported: "Clé Gemini importée",
     geminiKeyImportFailed: "QR invalide",
     geminiKeyMissing: "Renseignez une clé Gemini avant de la partager.",

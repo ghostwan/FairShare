@@ -1,6 +1,8 @@
 package com.fairshare.data.invitation
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,6 +50,52 @@ class InvitationCodecTest {
             java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
         val decoded = InvitationCodec.decode(url).getOrThrow()
         assertEquals(eventId, decoded.eventId)
+    }
+
+    @Test
+    fun `no gemini params when no key is shared`() {
+        val url = InvitationCodec.encode(eventId, key, geminiKey = "  ", geminiModel = "m")
+        assertFalse(url.contains("gk="))
+        assertFalse(url.contains("gm="))
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertNull(decoded.geminiKey)
+        assertNull(decoded.geminiModel)
+    }
+
+    @Test
+    fun `gemini key and model round-trip`() {
+        val url = InvitationCodec.encode(
+            eventId,
+            key,
+            geminiKey = " AIzaSy-abc_DEF/+= ",
+            geminiModel = "gemini-2.5-flash",
+        )
+        assertTrue(url.contains("&gk=AIzaSy-abc_DEF%2F%2B%3D&gm=gemini-2.5-flash"))
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertEquals(eventId, decoded.eventId)
+        assertTrue(decoded.eventKey.contentEquals(key))
+        assertEquals("AIzaSy-abc_DEF/+=", decoded.geminiKey)
+        assertEquals("gemini-2.5-flash", decoded.geminiModel)
+    }
+
+    @Test
+    fun `gemini model without key is ignored`() {
+        val keyB64 = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
+        val url = "fairshare://join?event=$eventId&key=$keyB64&gm=gemini-2.5-pro"
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertNull(decoded.geminiKey)
+        assertNull(decoded.geminiModel)
+    }
+
+    @Test
+    fun `decodes the webapp gemini wire format`() {
+        // Same vector as webapp/src/core/__tests__/invitation.test.ts.
+        val keyB64 = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key)
+        val url = "https://fairshare-web-bdg.pages.dev/join?event=$eventId&key=$keyB64" +
+            "&gk=AIza%20x%2Fy&gm=gemini-2.5-pro"
+        val decoded = InvitationCodec.decode(url).getOrThrow()
+        assertEquals("AIza x/y", decoded.geminiKey)
+        assertEquals("gemini-2.5-pro", decoded.geminiModel)
     }
 
     @Test

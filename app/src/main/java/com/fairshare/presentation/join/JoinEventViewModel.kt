@@ -32,6 +32,12 @@ data class JoinEventState(
     val eventId: String? = null,
     val joining: Boolean = false,
     val joined: Boolean = false,
+    /** Gemini key embedded in the invitation by the inviter, or null. */
+    val sharedGeminiKey: String? = null,
+    /** True when this device already has its own Gemini key. */
+    val hasLocalGeminiKey: Boolean = false,
+    /** Whether [sharedGeminiKey] will be saved in the settings on join. */
+    val importGeminiKey: Boolean = false,
     val error: String? = null,
 )
 
@@ -63,6 +69,10 @@ class JoinEventViewModel @Inject constructor(
                         loading = false,
                         eventName = p.eventName,
                         eventId = p.eventId,
+                        sharedGeminiKey = p.sharedGeminiKey,
+                        hasLocalGeminiKey = p.hasLocalGeminiKey,
+                        // Never silently overwrite a key the user already set.
+                        importGeminiKey = p.sharedGeminiKey != null && !p.hasLocalGeminiKey,
                     )
                 }
                 .onFailure { t ->
@@ -71,11 +81,15 @@ class JoinEventViewModel @Inject constructor(
         }
     }
 
+    fun setImportGeminiKey(value: Boolean) {
+        _state.value = _state.value.copy(importGeminiKey = value)
+    }
+
     fun join() {
         if (_state.value.joining || _state.value.joined) return
         _state.value = _state.value.copy(joining = true, error = null)
         viewModelScope.launch {
-            importer.apply(url)
+            importer.apply(url, importGeminiKey = _state.value.importGeminiKey)
                 .onSuccess { p ->
                     _state.value = _state.value.copy(
                         joining = false,

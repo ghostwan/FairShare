@@ -1,5 +1,7 @@
 package com.fairshare.data.invitation
 
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.Base64
 
 /**
@@ -16,6 +18,16 @@ import java.util.Base64
  *                    &key=<base64url(32-byte eventKey)>
  *
  *   https://fairshare-web-bdg.pages.dev/join?event=<eventId>&key=…
+ *
+ * Optional trailing parameters, appended only when the inviter opts in
+ * to share their Gemini API key with the invitee:
+ *
+ *   &gk=<urlencoded Gemini key>&gm=<urlencoded Gemini model>
+ *
+ * `gm` is only meaningful alongside `gk`. Decoders that predate these
+ * fields ignore them (unknown params are skipped), so the format stays
+ * backward compatible. Byte-compatible with
+ * `webapp/src/core/invitation/codec.ts`.
  *
  * Both forms are interchangeable on decode. The https form is the
  * default for QR codes so iOS Safari / Camera open it natively; the
@@ -41,16 +53,24 @@ internal object InvitationCodec {
     data class Decoded(
         val eventId: String,
         val eventKey: ByteArray,
+        /** Gemini API key shared by the inviter, or null. */
+        val geminiKey: String? = null,
+        /** Gemini model shared by the inviter (only set with [geminiKey]). */
+        val geminiModel: String? = null,
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is Decoded) return false
             return eventId == other.eventId &&
-                eventKey.contentEquals(other.eventKey)
+                eventKey.contentEquals(other.eventKey) &&
+                geminiKey == other.geminiKey &&
+                geminiModel == other.geminiModel
         }
         override fun hashCode(): Int {
             var h = eventId.hashCode()
             h = 31 * h + eventKey.contentHashCode()
+            h = 31 * h + (geminiKey?.hashCode() ?: 0)
+            h = 31 * h + (geminiModel?.hashCode() ?: 0)
             return h
         }
     }
@@ -81,10 +101,20 @@ internal object InvitationCodec {
         eventId: String,
         eventKey: ByteArray,
         host: Host = Host.Https,
+        geminiKey: String? = null,
+        geminiModel: String? = null,
     ): String {
         require(eventKey.size == 32) { "eventKey must be 32 bytes, got ${eventKey.size}" }
         val key = base64UrlEncode(eventKey)
-        val query = "event=$eventId&key=$key"
+        val query = buildString {
+            append("event=").append(eventId).append("&key=").append(key)
+            val gk = geminiKey?.trim()
+            if (!gk.isNullOrEmpty()) {
+                append("&gk=").append(urlEncode(gk))
+                val gm = geminiModel?.trim()
+                if (!gm.isNullOrEmpty()) append("&gm=").append(urlEncode(gm))
+            }
+        }
         return when (host) {
             Host.Https -> "https://$HTTPS_HOST$HTTPS_PATH?$query"
             Host.Custom -> "$SCHEME://$HOST?$query"
@@ -109,7 +139,25 @@ internal object InvitationCodec {
             return Result.failure(DecodeException(DecodeError.MalformedUrl))
         }
 
-        return Result.success(Decoded(eventId = eventId, eventKey = eventKey))
+        val geminiKey = params["gk"]
+            ?.let { runCatching { urlDecode(it) }.getOrNull() }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val geminiModel = geminiKey?.let {
+            params["gm"]
+                ?.let { runCatching { urlDecode(it) }.getOrNull() }
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+
+        return Result.success(
+            Decoded(
+                eventId = eventId,
+                eventKey = eventKey,
+                geminiKey = geminiKey,
+                geminiModel = geminiModel,
+            ),
+        )
     }
 
     private fun parseUrl(url: String): Map<String, String>? {
@@ -134,6 +182,12 @@ internal object InvitationCodec {
             else pair.substring(0, eq) to pair.substring(eq + 1)
         }.toMap()
     }
+
+    private fun urlEncode(s: String): String =
+        URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+
+    private fun urlDecode(s: String): String =
+        URLDecoder.decode(s, "UTF-8")
 
     private fun base64UrlEncode(bytes: ByteArray): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)

@@ -11,7 +11,10 @@ import {
   WorkerCloudTransport,
   WorkerTransportError,
 } from "@/core/sync/transport";
-import { encodeInvitation } from "@/core/invitation/codec";
+import {
+  encodeInvitation,
+  type InvitationGeminiShare,
+} from "@/core/invitation/codec";
 import type {
   Category,
   Event,
@@ -460,7 +463,8 @@ export { base64UrlDecode };
  */
 export async function buildInvitationForEvent(
   eventId: string,
+  gemini: InvitationGeminiShare | null = null,
 ): Promise<string> {
   const secret = await getEventSecret(eventId);
-  return encodeInvitation(eventId, secret.key, "https");
+  return encodeInvitation(eventId, secret.key, "https", gemini);
 }

@@ -17,8 +17,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -76,14 +78,22 @@ fun JoinEventScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.error,
                     )
-                else -> Body(state, onJoin = vm::join)
+                else -> Body(
+                    state,
+                    onJoin = vm::join,
+                    onImportGeminiKeyChange = vm::setImportGeminiKey,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun Body(state: JoinEventState, onJoin: () -> Unit) {
+private fun Body(
+    state: JoinEventState,
+    onJoin: () -> Unit,
+    onImportGeminiKeyChange: (Boolean) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -103,6 +113,25 @@ private fun Body(state: JoinEventState, onJoin: () -> Unit) {
                 "après acceptation.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        state.sharedGeminiKey?.let { key ->
+            ListItem(
+                headlineContent = { Text("Utiliser la clé Gemini partagée") },
+                supportingContent = {
+                    Text(
+                        "Le lien contient une clé Gemini (${maskKey(key)}) pour le " +
+                            "scan de tickets par IA." +
+                            if (state.hasLocalGeminiKey) " Elle remplacera ta clé actuelle." else "",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.importGeminiKey,
+                        onCheckedChange = onImportGeminiKeyChange,
+                        enabled = !state.joining && !state.joined,
+                    )
+                },
+            )
+        }
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
         }
@@ -126,3 +155,6 @@ private fun Body(state: JoinEventState, onJoin: () -> Unit) {
         }
     }
 }
+
+private fun maskKey(key: String): String =
+    if (key.length > 8) "${key.take(4)}…${key.takeLast(4)}" else "…"

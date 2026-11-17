@@ -163,7 +163,7 @@ fun SettingsScreen(
                     enabled = apiKey.isNotBlank(),
                 ) {
                     Icon(Icons.Default.QrCode, contentDescription = null)
-                    Text("  Partager via QR")
+                    Text("  Afficher / partager")
                 }
                 OutlinedButton(onClick = onScanGeminiKey) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = null)
@@ -171,7 +171,7 @@ fun SettingsScreen(
                 }
             }
             Text(
-                "Le QR contient ta clé en clair — ne le scanne qu'avec tes propres appareils.",
+                "La clé est affichée en clair — ne la partage qu'avec des personnes de confiance : elles consommeront ton quota.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

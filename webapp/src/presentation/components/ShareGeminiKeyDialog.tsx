@@ -7,9 +7,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Snackbar,
   Stack,
   Typography,
 } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import QRCode from "qrcode";
 import { fr } from "@/i18n/fr";
 import { encodeGeminiKey } from "@/core/settings/geminiKeyCodec";
@@ -17,8 +19,9 @@ import { encodeGeminiKey } from "@/core/settings/geminiKeyCodec";
 /**
  * Renders the user's Gemini key + model as a `fairshare://gemini?...`
  * QR. Same `<img>` (toDataURL) strategy as InviteScreen to avoid the
- * canvas / flexbox stretching issue. The plain key is never displayed
- * — only a truncated preview — to discourage screenshots.
+ * canvas / flexbox stretching issue. The plain key is also displayed
+ * with a copy button so it can be sent to a friend through any
+ * messaging app.
  */
 export function ShareGeminiKeyDialog(props: {
   open: boolean;
@@ -27,6 +30,7 @@ export function ShareGeminiKeyDialog(props: {
   onClose: () => void;
 }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!props.open || !props.apiKey) {
@@ -52,10 +56,15 @@ export function ShareGeminiKeyDialog(props: {
     };
   }, [props.open, props.apiKey, props.model]);
 
-  const preview =
-    props.apiKey.length > 8
-      ? `${props.apiKey.slice(0, 4)}…${props.apiKey.slice(-4)} (${props.apiKey.length} car.)`
-      : `(${props.apiKey.length} car.)`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(props.apiKey);
+      setCopied(true);
+    } catch {
+      // Clipboard can be denied (iOS PWA, insecure context); the key
+      // stays selectable below.
+    }
+  };
 
   return (
     <Dialog open={props.open} onClose={props.onClose} fullWidth maxWidth="xs">
@@ -90,14 +99,44 @@ export function ShareGeminiKeyDialog(props: {
               <CircularProgress />
             )}
           </Box>
-          <Typography variant="caption" color="text.secondary">
-            {preview}
+          <Typography
+            variant="body2"
+            sx={{
+              fontFamily: "monospace",
+              wordBreak: "break-all",
+              userSelect: "all",
+              maxWidth: 320,
+            }}
+          >
+            {props.apiKey}
+          </Typography>
+          {props.model && (
+            <Typography variant="caption" color="text.secondary">
+              {fr.settings.geminiModel}: {props.model}
+            </Typography>
+          )}
+          <Button
+            variant="outlined"
+            startIcon={<ContentCopyIcon />}
+            onClick={() => void copy()}
+            disabled={!props.apiKey}
+          >
+            {fr.settings.geminiKeyCopy}
+          </Button>
+          <Typography variant="caption" color="text.secondary" align="center">
+            {fr.settings.geminiKeyShareWarning}
           </Typography>
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={props.onClose}>{fr.common.close}</Button>
       </DialogActions>
+      <Snackbar
+        open={copied}
+        autoHideDuration={2000}
+        onClose={() => setCopied(false)}
+        message={fr.settings.geminiKeyCopied}
+      />
     </Dialog>
   );
 }

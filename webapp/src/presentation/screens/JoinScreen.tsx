@@ -14,6 +14,7 @@ import {
   InvitationDecodeException,
 } from "@/core/invitation/codec";
 import { bootstrapFromInvitation } from "@/sync/coordinator";
+import { Settings } from "@/data/settings";
 import { WorkerTransportError } from "@/core/sync/transport";
 import { QrCameraView } from "../components/QrCameraView";
 
@@ -34,6 +35,10 @@ import { QrCameraView } from "../components/QrCameraView";
  *   3. Manual paste — covers cases where the auto-bootstrap couldn't
  *      reach the URL (someone forwarded the link as plain text, or
  *      the user navigated here manually).
+ *
+ * If the invitation carries a Gemini key (`gk`, opt-in on the
+ * inviter's side) and no key is configured locally, it is saved in
+ * the settings. An existing local key is never overwritten silently.
  */
 export function JoinScreen() {
   const navigate = useNavigate();
@@ -48,6 +53,10 @@ export function JoinScreen() {
     setError(null);
     try {
       const inv = decodeInvitation(url.trim());
+      if (inv.geminiKey && !(await Settings.getGeminiApiKey()).trim()) {
+        await Settings.setGeminiApiKey(inv.geminiKey);
+        if (inv.geminiModel) await Settings.setGeminiModel(inv.geminiModel);
+      }
       await bootstrapFromInvitation(inv.eventId, inv.eventKey);
       navigate(`/event/${inv.eventId}`, { replace: true });
     } catch (e) {

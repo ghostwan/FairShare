@@ -8,6 +8,8 @@ import {
   Switch,
   TextField,
   Typography,
+  IconButton,
+  InputAdornment,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -17,6 +19,8 @@ import QrCodeIcon from "@mui/icons-material/QrCode2";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { fr } from "@/i18n/fr";
 import { DEFAULTS, Settings } from "@/data/settings";
 import { ShareGeminiKeyDialog } from "../components/ShareGeminiKeyDialog";
@@ -46,6 +50,7 @@ import { APP_VERSION, formatBuildTime } from "@/buildInfo";
 export function SettingsScreen() {
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULTS.cloudBaseUrl);
   const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [geminiModel, setGeminiModel] = useState(DEFAULTS.geminiModel);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -111,8 +116,27 @@ export function SettingsScreen() {
         value={geminiApiKey}
         onChange={(e) => setGeminiApiKey(e.target.value)}
         helperText={fr.settings.geminiKeyHint}
-        type="password"
+        type={showGeminiKey ? "text" : "password"}
         fullWidth
+        slotProps={{
+          input: {
+            endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                aria-label={
+                  showGeminiKey
+                    ? fr.settings.hideGeminiKey
+                    : fr.settings.showGeminiKey
+                }
+                onClick={() => setShowGeminiKey((v) => !v)}
+                edge="end"
+              >
+                {showGeminiKey ? <VisibilityOffIcon /> : <VisibilityIcon />}
+              </IconButton>
+            </InputAdornment>
+            ),
+          },
+        }}
       />
       <Accordion disableGutters elevation={0} sx={{ bgcolor: "transparent" }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0 }}>
