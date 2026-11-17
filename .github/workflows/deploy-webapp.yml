@@ -1,0 +1,72 @@
+# Deploys the webapp (PWA) to Cloudflare Pages.
+#
+# Manual trigger only: Actions → "Deploy webapp" → Run workflow.
+# Pick the branch to deploy in the "Use workflow from" dropdown; it is
+# published to the Pages production branch (`master`) so it is served
+# at https://fairshare-web-bdg.pages.dev.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   API token with "Cloudflare Pages: Edit"
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id (32 hex chars)
+#
+# Remember to bump webapp/package.json before deploying (see AGENTS.md).
+name: Deploy webapp
+
+on:
+  workflow_dispatch:
+    inputs:
+      pages_branch:
+        description: "Cloudflare Pages branch (master = production, anything else = preview)"
+        required: true
+        default: master
+
+concurrency:
+  group: deploy-webapp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build (typecheck + vite)
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_BRANCH: ${{ inputs.pages_branch }}
+          SOURCE_REF: ${{ github.ref_name }}
+        run: >
+          npx wrangler pages deploy dist
+          --project-name fairshare-web
+          --branch "$PAGES_BRANCH"
+          --commit-hash "$GITHUB_SHA"
+          --commit-message "webapp $(node -p "require('./package.json').version") from $SOURCE_REF"
+          --commit-dirty=false
+
+      - name: Summary
+        env:
+          PAGES_BRANCH: ${{ inputs.pages_branch }}
+        run: |
+          echo "Deployed webapp $(node -p "require('./package.json').version") (${GITHUB_SHA::7}) to Pages branch '$PAGES_BRANCH'." >> "$GITHUB_STEP_SUMMARY"
